@@ -1,0 +1,38 @@
+[project]
+name = "nyc-taxi"
+version = "0.1.0"
+description = "An End-to-End production grade ML System using metaflow and mlflow. The initial downstream task of the system is to predict the total fare of the trip. Nyc yellow taxi dataset is being used for training of ml models."
+authors = [
+    {name = "Nilesh Auradkar",email = "nilesh.auradkar.0599@gmail.com"}
+]
+
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "metaflow",
+    "mlflow",
+    "databricks-sdk (>=0.73.0,<0.74.0)",
+    "xgboost",
+    "scikit-learn",
+    "joblib",
+    "pandas",
+    "numpy",
+    "python-dotenv",
+    "accelerate",
+    "transformers",
+    "beautifulsoup4",
+    "pyyaml",
+    "loguru",
+    "pydantic",
+    "graphql-core (<3.3.0)",
+    "cryptography (>=46.0.3,<47.0.0)",
+    "jupyter (>=1.1.1,<2.0.0)",
+    "ipykernel (>=7.1.0,<8.0.0)",
+]
+
+[tool.poetry]
+package-mode=false
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

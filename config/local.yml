@@ -1,0 +1,8 @@
+project: nyc_taxi
+
+logging: logging.conf
+
+backend:
+  module: backend.Local
+  database: data/nyc-taxi.db
+  target: http://localhost:8000/invocations

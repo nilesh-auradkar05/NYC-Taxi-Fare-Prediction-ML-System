@@ -13,7 +13,7 @@ dependencies = [
     "mlflow",
     "databricks-sdk (>=0.73.0,<0.74.0)",
     "xgboost",
-    "scikit-learn",
+    "scikit-learn (==1.6.1)",
     "joblib",
     "pandas",
     "numpy",
@@ -28,6 +28,10 @@ dependencies = [
     "cryptography (>=46.0.3,<47.0.0)",
     "jupyter (>=1.1.1,<2.0.0)",
     "ipykernel (>=7.1.0,<8.0.0)",
+    "fastapi (>=0.124.4,<0.125.0)",
+    "uvicorn (>=0.38.0,<0.39.0)",
+    "streamlit (>=1.52.2,<2.0.0)",
+    "requests (>=2.32.5,<3.0.0)",
 ]
 
 [tool.poetry]

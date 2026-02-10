@@ -1,0 +1,92 @@
+# NYC Taxi Fare Prediction
+
+# Start everything:   docker-compose up -d
+# Just MLflow server: docker-compose up mlflow minio minio-setup -d
+# Just API:           docker-compose up api -d
+
+# Services:
+#    API:          http://localhost:8000
+#    MLflow UI:    http://localhost:5000
+#    MinIO UI:     http://localhost:9001
+#    MinIO S3:     http://localhost:9000
+
+services:
+  # S3-compatible storage for MLFlow artifacts
+  minio:
+    image: minio/minio:latest
+    container_name: nyc-taxi-minio
+    ports:
+      - "9000:9000" # S3-API
+      - "9001:9001" # Web Console
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+# Create the artifact bucket on first startup
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+        mc mb local/mlflow-artifacts --ignore-existing;
+        echo 'Bucket ready';
+      "
+
+# Self-hosted MLflow tracking server
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.17.0
+    container_name: nyc-taxi-mlflow
+    depends_on:
+      minio-setup:
+        condition: service_completed_successfully
+    ports:
+      - "5000:5000"
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+    command: >
+      mlflow server
+        --backend-store-uri sqlite:///mlflow/mlflow.db
+        --default-artifact-root s3://mlflow-artifacts/
+        --host 0.0.0.0
+        --port 5000
+    volumes:
+      - mlflow_data:/mlflow
+
+# FastAPI orediction service (ONNX Runtime)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nyc-taxi-api
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_CACHE_DIR: /app/models/cache
+    volumes:
+      # Mount local model cache into the container
+      # Run download_model.py first to populate the cache
+      - ./models/cache:/app/models/cache:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  minio_data:
+  mlflow_data:

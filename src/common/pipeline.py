@@ -2,12 +2,10 @@
 This file contains the common pipeline decorators and base Pipeline class.
 """
 
-import importlib
 import os
 import re
 import sys
 import time
-from contextlib import suppress
 from pathlib import Path
 
 import pandas as pd
@@ -126,11 +124,10 @@ def dataset(step_name, flow, inputs=None, attr=None):
 
         flow.logger.info(f"Loaded dataset with {len(data)} samples")
 
-        # --- CHANGED: Save to disk instead of attaching to flow.data ---
-
         # Generate a unique filename using run_id to avoid overwriting if running concurrently
         filename = f"processed_dataset_{current.run_id}.parquet"
         output_path = Path(os.getcwd()) / "processed_dataset" / filename
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
         flow.logger.info(f"Saving processed dataframe to {output_path}...")
 
@@ -197,7 +194,7 @@ def parse_project_configuration(x):
     # If the mlflow tracking uri is not part of the configuration, we will set it to the
     # `MLFLOW_TRACKING_URI` environment variable.
     if "mlflow_tracking_uri" not in config:
-        config["mlflow_tracking_uri"] = os.getenv("MLFLOW_TRACKING_URI", "databricks")
+        config["mlflow_tracking_uri"] = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
 
     if "backend" not in config:
         config["backend"] = {"module": "backend.Local"}
@@ -250,5 +247,5 @@ class Pipeline(FlowSpec):
     mlflow_tracking_uri = Parameter(
         "mlflow-tracking-uri",
         help="MLflow tracking URI.",
-        default="127.0.0.1:5000",
+        default="http://127.0.0.1:5000",
     )

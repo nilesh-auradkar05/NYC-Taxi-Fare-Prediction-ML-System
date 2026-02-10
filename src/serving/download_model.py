@@ -20,8 +20,10 @@ Usage:
 import os
 import sys
 import argparse
-from loguru import logger
+import tempfile
 from pathlib import Path
+
+from loguru import logger
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -40,23 +42,19 @@ def validate_env():
     Raises:
         EnvironmentError: If required variables are not set
     """
-    required_vars = ["DATABRICKS_HOST", "DATABRICKS_TOKEN"]
-    missing = [var for var in required_vars if not os.getenv(var)]
+    tracking_uri = os.getenv('MLFLOW_TRACKING_URI')
 
-    if missing:
-        logger.error(f"Missing required environment variables: {missing}")
-        logger.error("Please set these in your .env file or environment")
-        logger.error("")
-        logger.error("DATABRICKS_HOST=<your_databricks_host>")
-        logger.error("DATABRICKS_TOKEN=<your_databricks_token>")
-        raise EnvironmentError(f"Missing required environment variables: {missing}")
+    if not tracking_uri:
+        logger.error("MLFlow tracking URI is not set.")
+        logger.error("Set it in your .env file or environment variables")
+        logger.error("\tMLFLOW_TRACKING_URI=http://127.0.0.1:5000")
+        raise EnvironmentError("Missing MLFLOW_TRACKING_URI")
 
-    logger.info("Environment variables validated successfully")
-    logger.info(f"DATABRICKS_HOST: {os.getenv("DATABRICKS_HOST")}")
+    logger.info(f"Mlflow tracking URI: {tracking_uri}")
 
 def download_model(
-    model_name: str="ml_models.nyc-taxi.nyc-taxi-model",
-    model_version: str="champion",
+    model_name: str="nyc-taxi-model_v2",
+    model_version: str="latest",
     output_dir: str="models/cache",
 ) -> dict:
     """
@@ -89,10 +87,9 @@ def download_model(
     dict
         Dictionary containing paths to downloaded artifacts:
         {
-            "model_path": "/path/to/model.joblib",
+            "model_path": "/path/to/model.onnx",
             "transformer_path": "/path/to/transformer.joblib",
-            "model_version": "1",
-            "model_name": "ml_models.nyc-taxi.nyc-taxi-model"
+            "metadata_path": metadata.json
         }
     
     Raises:
@@ -109,11 +106,9 @@ def download_model(
 
     import mlflow
     from mlflow.tracking import MlflowClient
-    import joblib
-    import tempfile
 
     logger.info("="*60)
-    logger.info("Model download from unity catalog")
+    logger.info("ONNX Model download")
     logger.info("="*60)
 
     # Configure MLflow for databricks
@@ -121,13 +116,10 @@ def download_model(
     # - tracking_uri="databricks"
     # - registry_uri="databricks-uc"
 
-    logger.info("Configuring MLflow for databricks....")
+    logger.info("Configuring MLflow....")
 
-    mlflow.set_tracking_uri("databricks")
-    mlflow.set_registry_uri("databricks-uc")
-
-    logger.info("    Tracking URI: databricks")
-    logger.info("    Registry URI: databricks-uc")
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", 'http://127.0.0.1:5000')
+    mlflow.set_tracking_uri(tracking_uri)
 
     # Create Output Directory
     output_path = Path(output_dir)
@@ -141,28 +133,18 @@ def download_model(
     logger.info(f"Requested version: {model_version}")
 
     try:
-        # Check if this is an alias or a version number
-        is_alias = model_version in ["champion", "challenger"] or model_version.startswith("@")
-        alias = None
+        if model_version == "latest":
+            versions = client.search_model_versions(f"name='{model_name}'")
+            if not versions:
+                raise RuntimeError(f"No versions found for '{model_name}'")
 
-        if is_alias:
-            # Resolve alias to version number
-            alias = model_version.lstrip("@")
-            version_info = client.get_model_version_by_alias(
-                name=model_name,
-                alias=alias,
-            )
-            version_number = version_info.version
-            run_id = version_info.run_id
-            logger.info(f"Resolved @{alias} to version {version_number}")
+            version_info = sorted(versions, key=lambda v: int(v.version))[-1]
         else:
-            # Use specific version number
-            version_number = model_version
-            version_info = client.get_model_version(model_name, version_number)
-            run_id = version_info.run_id
+            version_info = client.get_model_version(model_name, model_version)
 
-        logger.info(f"    Version: {version_number}")
-        logger.info(f"    Run ID: {run_id}")
+        version_number = version_info.version
+        run_id = version_info.run_id
+        logger.info(f"\tResolved: version {version_number}, run {run_id}")
 
     except Exception as e:
         logger.error(f"Failed to resolve model version: {e}")
@@ -170,25 +152,26 @@ def download_model(
 
     # Download Model
 
-    logger.info(f"\n Downloading model from unity catalog....")
+    logger.info("\n Downloading ONNX model....")
     try:
-        if is_alias and alias is not None:
-            model_uri = f"models:/{model_name}@{alias}"
-        else:
-            model_uri = f"models:/{model_name}/{version_number}"
+        with tempfile.TemporaryDirectory() as  tmp_dir:
+            artifact_dir = client.download_artifacts(str(run_id), "onnx_model", tmp_dir)
+            source_onnx = Path(artifact_dir) / "model.onnx"
 
-        logger.info(f"    Model URI: {model_uri}")
+            if not source_onnx.exists():
+                found = list(Path(artifact_dir).rglob("*.onnx"))
+                if found:
+                    source_onnx = found[0]
+                else:
+                    raise FileNotFoundError(
+                        "No .onnx file found in artifacts. "
+                        f"Contents: {list(Path(artifact_dir).rglob("*.onnx"))}"
+                    )
 
-        # Download and load the model
-        model = mlflow.sklearn.load_model(model_uri)
-
-        # Save locally using joblib
-        model_path = output_path / "model.joblib"
-        joblib.dump(model, model_path)
-
-        logger.info(f"    Model downloaded successfully and cached")
-        logger.info(f"    Type: {type(model).__name__}")
-        logger.info(f"    Saved at: {model_path}")
+            model_path = output_path / "model.onnx"
+            import shutil
+            shutil.copy2(source_onnx, model_path)
+            logger.info(f"\tSaved: {model_path} ({model_path.stat().st_size/1024:.0f} KB)")
 
     except Exception as e:
         logger.error(f"Failed to download model: {e}")
@@ -198,52 +181,41 @@ def download_model(
     logger.info(f"\nDownloading preprocessing transformer from run: {run_id}")
     try:
         with tempfile.TemporaryDirectory() as  tmp_dir:
-            # Download preprocessing artifacts from the training run
-            artifact_path = client.download_artifacts(
-                run_id,
-                "preprocessing",
-                tmp_dir
-            )
+            artifact_dir = client.download_artifacts(str(run_id), "preprocessing", str(tmp_dir))
+            source_transformer = Path(artifact_dir) / "features.joblib"
 
-            # Load the transformer
-            source_transformer_path = Path(artifact_path) / "features.joblib"
-
-            if not source_transformer_path.exists():
+            if not source_transformer.exists():
                 raise FileNotFoundError(
-                    f"Transformer not found at: {source_transformer_path}"
+                    f"Transformer not found at: {source_transformer}"
                 )
 
-            transformer = joblib.load(source_transformer_path)
-
-            # Save locally using joblib
             transformer_path = output_path / "transformer.joblib"
-            joblib.dump(transformer, transformer_path)
+            shutil.copy2(source_transformer, transformer_path)
 
             logger.info("    Transformer downloaded successfully and cached")
-            logger.info(f"    Type: {type(transformer).__name__}")
+            logger.info(f"    Type: {type(transformer_path).__name__}")
             logger.info(f"    Saved at: {transformer_path}")
 
     except Exception as e:
         logger.error(f"Failed to download transformer: {e}")
         raise RuntimeError(f"Transformer download failed: {e}") from e
 
-    # Save metadata
     import json
 
+    # Save Metadata for the serving layer
     metadata = {
         "model_name": model_name,
         "model_version": str(version_number),
-        "model_alias": model_version if is_alias and alias is not None else None,
+        "model_alias": None,
+        "model_format": "ONNX",
         "run_id": run_id,
-        "download_timestamp": str(Path(model_path).stat().st_mtime),
+        "mlflow_tracking_uri": tracking_uri,
         "model_path": str(model_path),
         "transformer_path": str(transformer_path),
     }
 
     metadata_path = output_path / "metadata.json"
-    with open(metadata_path, "w") as f:
-        json.dump(metadata, f, indent=2)
-
+    metadata_path.write_text(json.dumps(metadata, indent=2))
     logger.info(f"    Metadata saved at: {metadata_path}")
 
     # Summary
@@ -273,20 +245,6 @@ def main():
     parser = argparse.ArgumentParser(
         description="Download NYC Taxi model from unity catalog",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        epilog="""
-        Examples:
-        # Download champion model (default)
-        python download_model.py
-        
-        # Download specific version
-        python download_model.py --model-version 2
-        
-        # Download challenger model
-        python download_model.py --model-version challenger
-        
-        # Custom output directory
-        python download_model.py --output-dir /tmp/model_cache
-        """
     )
 
     parser.add_argument(
@@ -297,8 +255,8 @@ def main():
 
     parser.add_argument(
         "--model-version",
-        default="champion",
-        help="Model version or alias: 'champion', 'challenger', or version number (default: champion)"
+        default="latest",
+        help="Model version or alias: 'latest' for local mlflow server, 'champion', 'challenger', or version number for databricks (default: latest)"
     )
 
     parser.add_argument(
@@ -315,7 +273,7 @@ def main():
         validate_env()
 
         # Download model and transformer
-        paths = download_model(
+        download_model(
             model_name=args.model_name,
             model_version=args.model_version,
             output_dir=args.output_dir,

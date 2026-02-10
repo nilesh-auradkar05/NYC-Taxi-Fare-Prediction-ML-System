@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+.mypy_cache
+.pytest_cache
+*.egg-info
+
+# Data and models (mounted at runtime, not baked in by default)
+Dataset/
+models/
+predictions/
+processed_dataset/
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Metaflow artifacts
+.metaflow
+
+# dbt
+dbt_packages/
+target/
+logs/
+
+# Docker
+docker-compose*.yml
+Dockerfile
+
+# Docs
+*.md
+*.html

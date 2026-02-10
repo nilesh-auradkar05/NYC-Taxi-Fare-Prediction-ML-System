@@ -1,0 +1,71 @@
+# NYC Taxi Fare Prediction - Serving Image
+
+# Multi-stage build: slim python image with ONNX runtime.
+
+# BUILD: docker build -t nyc-taxi-api .
+# RUN:   docker run -p 8000:8000 -v ./models/cache:/app/models/cache nyc-taxi-api
+
+# Model artifacts (model.onnx + transformer.joblib) are loaded
+# from /app/models/cache at runtime
+
+# ====== STAGE 1: Build Dependencies ========
+FROM python:3.12-slim as builder
+
+WORKDIR /build
+
+# System deps needed to compile some python packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python deps into a virtual env for clean copy
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements-serving.txt .
+RUN pip install --no-cache-dir -r requirements-serving.txt
+
+# ====== STAGE 2: Runtime ========
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+
+# Copy the virtual env from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy application code
+# Only what the serving layer needs
+COPY src/common/__init__.py src/common/__init__.py
+COPY src/common/features.py src/common/features.py
+COPY src/serving/__init__.py src/serving/__init__.py
+COPY src/serving/api.py src/serving/api.py
+
+# Set PYTHONPATH so "from common.features import ....." resolves
+ENV PYTHONPATH="/app/src:${PYTHONPATH}"
+
+# Default cache directory for model artifacts
+# Mount a volume here or bake artifacts into the image
+ENV MODEL_CACHE_DIR="/app/models/cache"
+
+# Create directory so mount point exists even without artifacts
+RUN mkdir -p /app/models/cache
+
+# Non-root user for security
+RUN useradd --create-home appuser
+USER appuser
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+# Uvicorn with sensible deafaults:
+# --workers 1: single worker (scale via replicas in K8s, not workers)
+# --timeout-keep-alive 30: match ALB/NLB defaults
+CMD ["uvicorn", "src.serving.api:app", \
+    "--host", "0.0.0.0", \
+    "--port", "8000", \
+    "--workers", "1", \
+    "--timeout-keep-alive", "30", \
+    "--log-level", "info"]

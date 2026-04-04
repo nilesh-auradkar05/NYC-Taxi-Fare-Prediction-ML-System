@@ -26,21 +26,37 @@ Usage:
         -H "Content-Type: application/json" \\
         -d '{"pickup_datetime": "2024-01-15 08:30:00", ....}'
 """
+from src.common.features import engineer_features
+from src.serving.monitoring import (
+    REQUEST_COUNT,
+    REQUEST_LATENCY,
+    PREDICTION_VALUE,
+    PREDICTION_DISTANCE,
+    MODEL_INFO,
+    PREDICTIONS_SERVED,
+    LAST_PREDICTION_TIME,
+    get_metrics_text,
+    prediction_tracker,
+    PredictionRecord,
+    generate_drift_report,
+)
 
 import os
 import sys
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from contextlib import asynccontextmanager
 import onnxruntime as ort
 
+import numpy as np
 import pandas as pd
 import joblib
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field
 from typing import Literal
 from loguru import logger
 
@@ -49,7 +65,7 @@ root_path = file_path.parent.parent
 if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
-from src.common.features import engineer_features
+
 
 # Config
 MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "models/cache")
@@ -69,28 +85,31 @@ class TripInput(BaseModel):
     # Required Fields
     pickup_datetime: str = Field(
         ...,
-        description="Trip pickup date and time (format: 'YYYY-MM-DD HH:MM:SS')(required)",
+        description="Trip pickup date and time (format: 'YYYY-MM-DD HH:MM:SS')",
         examples=["2024-01-15 08:30:00"],
-    )
-
-    dropoff_datetime: str = Field(
-        ...,
-        description="Dropoff date and time (format: 'YYYY-MM-DD HH:MM:SS')(required)",
-        examples=["2024-01-15 09:15:00"],
     )
 
     trip_distance: float = Field(
         ...,
-        description="Trip distance in miles (required)",
+        gt=0,
+        description="Estimated trip distance in miles",
         examples=[5.2],
+    )
+
+    # Optional: reasonable defaults for typical trips
+    estimated_duration_minutes: float | None = Field(
+        default=None,
+        gt=0,
+        description="Estimated trip duration in minutes. If omitted, estimated from distance.",
+        examples=[25.0],
     )
 
     # Optional Fields
     passenger_count: int = Field(
         default=1,
         ge=0,
-        le=4,
-        description="Number of passengers (0-4)",
+        le=6,
+        description="Number of passengers",
         examples=[2],
     )
 
@@ -110,47 +129,15 @@ class TripInput(BaseModel):
         examples=[1],
     )
 
-    store_and_fwd_flag: Literal["Y", "N"] = Field(default="N")
-
     payment_type: int = Field(
         default=1,
         ge=1,
         le=6,
-        description="Payment type (1=Credit card, 2=Cash, 3=No Charge, 4=Dispute, 5=Unknown, 6=Voided)",
+        description="Payment type (1=Credit card, 2=Cash)",
         examples=[1],
     )
 
-    # Financial Fields
-    fare_amount: float = Field(
-        default=0.0,
-        description="Base Fare amount (if known, otherwise estimated)",
-        examples=[14.50],
-    )
-
-    tip_amount: float = Field(
-        default=0.0,
-        ge=0,
-        description="Tip amount (if known)",
-        examples=[3.00]
-    )
-    
-    tolls_amount: float = Field(
-        default=0.0,
-        ge=0,
-        description="Toll charges (if known)",
-        examples=[0.0]
-    )
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "pickup_datetime": "2025-01-01T08:30:00",
-                "dropoff_datetime": "2024-01-15T09:15:00",
-                "trip_distance": 5.2,
-                "passenger_count": 2,
-            }
-        }
-    )
+    store_and_fwd_flag: Literal["Y", "N"] = Field(default="N")
 
 class PredictionResponse(BaseModel):
     """
@@ -160,7 +147,7 @@ class PredictionResponse(BaseModel):
     """
 
     predicted_fare: float
-    trip_duration_minutes: float
+    estimated_duration_minutes: float
     model_version: str
     prediction_timestamp: datetime
 
@@ -177,19 +164,37 @@ class ModelInfoResponse(BaseModel):
     transformer_type: str
 
 def trip_to_dataframe(trip: TripInput) -> pd.DataFrame:
-    """Convert API request into a single-row DataFrame matching training schema."""
+    """Convert pre-trip API request into a single-row DataFrame matching training schema.
+    
+    Estimates dropoff time from distance if duration not provided.
+    Financial fields (fare, tip, tolls) are set to 0 since they are
+    unknown pre-trip; the model was trained with theses fields but will
+    learn to rely on distance/time/metadata features for pre-trip estimates.
+    """
+    pickup_dt = pd.to_datetime(trip.pickup_datetime)
+
+    # Estimate duration: user-provided or ~15 mph average NYC speed
+    if trip.estimated_duration_minutes is not None:
+        duration_min = trip.estimated_duration_minutes
+    else:
+        avg_speed_mph = 15.0  # typical NYC average
+        duration_min = max(1.0, (trip.trip_distance / avg_speed_mph) * 60)
+
+    dropoff_dt = pickup_dt + pd.Timedelta(minutes=duration_min)
+
     return pd.DataFrame([{
-        "tpep_pickup_datetime": pd.to_datetime(trip.pickup_datetime),
-        "tpep_dropoff_datetime": pd.to_datetime(trip.dropoff_datetime),
+        "tpep_pickup_datetime": pickup_dt,
+        "tpep_dropoff_datetime": dropoff_dt,
         "trip_distance": trip.trip_distance,
         "passenger_count": trip.passenger_count,
         "VendorID": trip.VendorID,
         "RatecodeID": trip.RatecodeID,
         "store_and_fwd_flag": trip.store_and_fwd_flag,
         "payment_type": trip.payment_type,
-        "fare_amount": trip.fare_amount,
-        "tip_amount": trip.tip_amount,
-        "tolls_amount": trip.tolls_amount,
+        # Financial fields unknown pre-trip
+        "fare_amount": 0,
+        "tip_amount": 0,
+        "tolls_amount": 0,
         # Columns present in training data but not user-provided
         "extra": 0.0,
         "mta_tax": 0.5,
@@ -242,8 +247,17 @@ async def lifespan(app: FastAPI):
 
     app.state.metadata = json.loads(METADATA_PATH.read_text()) if METADATA_PATH.exists() else {}
 
+    # Register model info with Prometheus
+    MODEL_INFO.info({
+        "name": app.state.metadata.get("model_name", "unknown"),
+        "version": app.state.metadata.get("model_version", "unknown"),
+        "format": "ONNX",
+    })
+
+    app.state.startup_time = time.time()
+
     logger.info("")
-    logger.info("    API ready to serve perdictions!")
+    logger.info("    API ready to serve predictions!")
     logger.info("="*60)
 
     yield
@@ -274,13 +288,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:8501").split(",")
+
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 # API Endpoints
@@ -328,7 +344,7 @@ async def model_info():
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(trip: TripInput):
     """
-    Predict the total fare for a taxi trip.
+    Estimate/Predict the total fare for a taxi trip before it starts.
 
     This endpoint accepts trip details and returns a fare prediction.
     The prediction includes:
@@ -359,13 +375,15 @@ async def predict(trip: TripInput):
     }
     ```
     """
-    import numpy as np
     # Validate Model is loaded
     if not hasattr(app.state, "model"):
+        REQUEST_COUNT.labels(status="error").inc()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Model not loaded"
         )
+
+    start_time = time.time()
 
     try:
         # Feature Engineering
@@ -385,27 +403,115 @@ async def predict(trip: TripInput):
         output = app.state.model.run(None, {app.state.onnx_input_name: X})
         prediction = max(0.0, float(output[0].flatten()[0]))
 
+        # Duration: user-provided or estimated from distance
+        if trip.estimated_duration_minutes is not None:
+            duration = trip.estimated_duration_minutes
+        else:
+            duration = round(max(1.0, (trip.trip_distance / 15.0) * 60), 1)
+
+        # Record metrics
+        latency = time.time() - start_time
+        REQUEST_LATENCY.observe(latency)
+        REQUEST_COUNT.labels(status="success").inc()
+        PREDICTION_VALUE.observe(prediction)
+        PREDICTION_DISTANCE.observe(trip.trip_distance)
+        PREDICTIONS_SERVED.inc()
+        LAST_PREDICTION_TIME.set(time.time())
+
         # Calculate trip duration
         pickup_dt = pd.to_datetime(trip.pickup_datetime)
-        dropoff_dt = pd.to_datetime(trip.dropoff_datetime)
-        trip_duration = (dropoff_dt - pickup_dt).total_seconds() / 60
+        prediction_tracker.record(PredictionRecord(
+            timestamp=time.time(),
+            predicted_fare=prediction,
+            trip_distance=trip.trip_distance,
+            pickup_hour=pickup_dt.hour,
+            is_rush_hour=int(pickup_dt.hour in range(7, 10) or pickup_dt.hour in range(16, 19)),
+            is_weekend=int(pickup_dt.weekday() >= 5),
+            passenger_count=trip.passenger_count,
+            duration_minutes=duration,
+        ))
 
-        logger.debug(f"Prediction: ${prediction:.2f}")
+        logger.debug(f"Prediction: ${prediction:.2f}, latency: {latency*1000:.1f}ms")
 
         # Return Response
         return PredictionResponse(
             predicted_fare=round(prediction, 2),
-            trip_duration_minutes=round(trip_duration, 2),
+            estimated_duration_minutes=round(duration, 2),
             model_version=app.state.metadata.get("model_version", "unknown"),
             prediction_timestamp=datetime.now(timezone.utc),
         )
 
     except Exception as e:
+        REQUEST_COUNT.labels(status="error").inc()
+        REQUEST_LATENCY.observe(time.time() - start_time)
         logger.error(f"Prediction failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Prediction failed: {str(e)}"
         )
+
+# Monitoring ENDPOINTS
+
+@app.get("/metrics", tags=["Monitoring"])
+async def metrics():
+    """Prometheus-compatible metrics endpoint."""
+    return Response(
+        content=get_metrics_text(),
+        media_type="text/plain; charset=utf-8",
+    )
+
+@app.get("/ready", tags=["Health"])
+async def readiness():
+    """
+    Readiness probe for kubernetes.
+
+    Returns 200 only when the model is loaded and has served at least
+    one prediction successfully (warm start). Use for K8s readinessProbe.
+    """
+    if not hasattr(app.state, "model"):
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    if not hasattr(app.state, "transformer"):
+        raise HTTPException(status_code=503, detail="Transformer not loaded")
+    return {"ready": True}
+
+@app.get("/live", tags=["Health"])
+async def liveness():
+    """
+    Liveness probe for kubernetes.
+
+    Returns 200 if the process is alive. Use for K8s livenessProbe.
+    """
+    return {"live": True}
+
+@app.get("/predictions/summary", tags=["Monitoring"])
+async def predictions_summary():
+    "Summary statistics of recent predictions from the ring buffer."
+    return prediction_tracker.get_summary()
+
+@app.post("/drift", tags=["Monitoring"])
+async def drift_check():
+    """
+    Run drift detection comparing recent predictions against a reference.
+
+    Requires at least 100 predictions in the buffer. Uses Evidently
+    to detect distribution shifts in fare, distance, and time features.
+    """
+    current_df = prediction_tracker.to_dataframe()
+
+    if len(current_df) < 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Need at least 100 predictions for drift analysis, "
+                   f"currently have {len(current_df)}. Keep sending requests.",
+        )
+
+    # Use the first half as reference, second half as current
+    midpoint = len(current_df) // 2
+    reference_df = current_df.iloc[:midpoint]
+    recent_df = current_df.iloc[midpoint:]
+
+    result = generate_drift_report(reference_df, recent_df)
+    return result
 
 # Main Entry point
 if __name__ == "__main__":

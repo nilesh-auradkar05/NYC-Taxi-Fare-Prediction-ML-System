@@ -36,9 +36,7 @@ NUMERICAL_FEATURES = [
     "hour_cos",
     "dayofweek_sin",
     "dayofweek_cos",
-    "refund_amount",
     "has_negative_fare",
-    "is_full_refund",
 ]
 
 CATEGORICAL_FEATURES = [
@@ -47,7 +45,6 @@ CATEGORICAL_FEATURES = [
     "RatecodeID",
     "store_and_fwd_flag",
     "time_of_day",
-    "negative_fare_category",
     "vendor_payment_interaction",
 ]
 
@@ -125,21 +122,38 @@ def engineer_features(df: pd.DataFrame, target_column: str | None = None) -> pd.
     hours = (df["trip_duration_minutes"] / 60).replace(0, np.nan)
     df["speed_mph"] = df["trip_distance"] / hours
 
-    df["is_rush_hour"] = 0
-    df["is_night"] = 0
-    df["refund_amount"] = 0
-    df["has_negative_fare"] = (df["fare_amount"] < 0).astype(int)
-    df["is_full_refund"] = 0
+    # Temporal classification
+    df["is_rush_hour"] = (
+        df["pickup_hour"].between(7, 9) | df["pickup_hour"].between(16, 18)
+    ).astype(int)
 
-    df["time_of_day"] = "unknown"
-    df["negative_fare_category"] = "none"
+    df["is_night"] = (
+        (df["pickup_hour"] >= 22 | df["pickup_hour"] <= 5)
+    ).astype(int)
+
+    df["has_negative_fare"] = (df["fare_amount"] < 0).astype(int)
+
+
+    df["time_of_day"] = pd.cut(
+        df["pickup_hour"],
+        bins=[-1, 5, 11, 16, 21, 24],
+        labels=["night", "morning", "afternoon", "evening", 'late_night'],
+    ).astype(str)
+
     df["vendor_payment_interaction"] = (
         df["VendorID"].astype(str) + "_" + df["payment_type"].astype(str)
     )
 
-    df.fillna(0, inplace=True)
+    # # Intentional imputation: computed ratios
+    ratio_cols = ["fare_per_mile", "tip_percentage", "speed_mph"]
+    for col in ratio_cols:
+        median_val = df[col].median()
+        df[col] = df[col].fillna(median_val)
 
-    for col in df.select_dtypes(include=["object"]).columns:
+    # Remaining NaNs (e.g. passenger_count) - fill with 0 only for non-ratio columns
+    df.fillna(0)
+
+    for col in df.select_dtypes(include=["object", "string"]).columns:
         df[col] = df[col].astype(str)
 
     return df

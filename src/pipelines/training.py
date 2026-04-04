@@ -10,16 +10,15 @@ from dotenv import load_dotenv
 
 import numpy as np
 import pandas as pd
-from metaflow import step, Parameter, card, current, environment
+from metaflow import step, Parameter, card, current, environment  # type: ignore[attr-defined]
 
 file_path = Path(__file__).resolve()
 root_path = file_path.parent.parent
 if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
-from src.common.pipeline import Pipeline, dataset
-from src.common.features import (
-    NUMERICAL_FEATURES,
+from src.common.pipeline import Pipeline, dataset  # noqa: E402
+from src.common.features import (  # noqa: E402
     engineer_features,
     build_transformer,
     build_model,

@@ -17,9 +17,9 @@ from metaflow import (
     Parameter,
     config_expr,
     current,
-    project,
     user_step_decorator,
 )
+from metaflow import project  # type: ignore[attr-defined]
 
 
 @user_step_decorator

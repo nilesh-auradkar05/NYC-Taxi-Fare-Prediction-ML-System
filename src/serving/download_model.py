@@ -1,7 +1,7 @@
 """
 Model Download Script for NYC Taxi Fare Prediction
 
-This script downloads the model and preprocessing transformer from Databricks Unity Catalog and caches them locally
+This script downloads ONNX model and preprocessing transformer from Mlflow registry and caches them locally
 for use by the FastAPI serving layer.
 
 Usage:
@@ -30,14 +30,7 @@ load_dotenv()
 
 def validate_env():
     """
-    Validate required environment variables are set.
-
-    Databricks Unity Catalog requires authentication via:
-    - DATABRICKS_HOST: The workspace URL (e.g., https://xxx.cloud.databricks.com)
-    - DATABRICKS_TOKEN: Personal Access Token (PAT) for API access
-    
-    These are typically stored in a .env file for local development
-    and injected as secrets in production environments.
+    Validate required environment variables are set(MLFLOW_TRACKING_URI).
     
     Raises:
         EnvironmentError: If required variables are not set
@@ -53,30 +46,20 @@ def validate_env():
     logger.info(f"Mlflow tracking URI: {tracking_uri}")
 
 def download_model(
-    model_name: str="nyc-taxi-model_v2",
+    model_name: str="nyc-taxi-model",
     model_version: str="latest",
     output_dir: str="models/cache",
 ) -> dict:
     """
-    Download model and transformer from unity catalog to local cache.
-
-    This function connects to databricks unity catalog, downloads the
-    specified model version or alias, and saves it locally along with
-    the preprocessing transformer for faster inference and to avoid
-    redundant model download.
+    Download ONNX model and transformer from MLflow to local cache.
 
     Parameters:
     -----------
     model_name : str
-        Full Unity Catalog model path: <catalog>.<schema>.<model_name>
-        Default: "ml_models.nyc-taxi.nyc-taxi-model"
+        Default: "nyc-taxi-model"
     
     model_version : str
-        Version or alias to download:
-        - "champion": The production-ready model (recommended)
-        - "challenger": Model being tested
-        - "<number>": Specific version number (e.g., "1", "2")
-        Default: "champion"
+        Default: "latest"
     
     output_dir : str
         Local directory to cache the model artifacts.
@@ -110,11 +93,6 @@ def download_model(
     logger.info("="*60)
     logger.info("ONNX Model download")
     logger.info("="*60)
-
-    # Configure MLflow for databricks
-    # Set both tracking URI and registry URI to databricks
-    # - tracking_uri="databricks"
-    # - registry_uri="databricks-uc"
 
     logger.info("Configuring MLflow....")
 
@@ -243,20 +221,20 @@ def main():
     from unity catalog to local cache
     """
     parser = argparse.ArgumentParser(
-        description="Download NYC Taxi model from unity catalog",
+        description="Download NYC Taxi model from MLflow registry",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
     parser.add_argument(
         "--model-name",
-        default="ml_models.nyc-taxi.nyc-taxi-model",
-        help="Full unity catalog model path (default: ml_models.nyc-taxi.nyc-taxi-model)"
+        default="nyc-taxi-model",
+        help="Registered model name in MLflow (default: nyc-taxi-model)"
     )
 
     parser.add_argument(
         "--model-version",
         default="latest",
-        help="Model version or alias: 'latest' for local mlflow server, 'champion', 'challenger', or version number for databricks (default: latest)"
+        help="Model version: 'latest' for model name in MLflow (default: latest)"
     )
 
     parser.add_argument(

@@ -2,34 +2,19 @@
 NYC Taxi Fare Prediction - Inference Pipeline
 ==============================================
 
-This module contains the inference pipeline for the NYC Taxi fare prediction system.
-It loads a trained model from the MLflow Model Registry and runs batch predictions
-on new data.
-
-The inference pipeline follows the same architectural patterns as the training pipeline,
-using Metaflow for orchestration and MLflow for model management. This ensures
-consistency between training and inference environments, reducing the risk of
-training-serving skew.
-
-Pipeline Steps:
----------------
-1. start: Initialize the pipeline, connect to MLflow, and load the registered model
-2. load_data: Load and validate the input data for prediction
-3. feature_engineering: Apply the same feature transformations as training
-4. transform: Apply the saved preprocessing transformer (StandardScaler, OneHotEncoder)
-5. predict: Run batch predictions using the loaded model
-6. end: Save predictions and generate summary statistics
+Batch inference using ONNX model from MLflow registry.
+Uses the same feature engineering as training via shared features module.
 
 Usage:
 ------
     # Run inference on default data
-    poetry run python src/pipelines/inference.py run
+    uv run python3 src/pipelines/inference.py run
     
     # Run inference with custom input file
-    poetry run python src/pipelines/inference.py run --input-data path/to/data.parquet
+    uv run python3 src/pipelines/inference.py run --input-data path/to/data.parquet
     
     # Run inference with specific model version
-    poetry run python src/pipelines/inference.py run --model-version 3
+    uv run python3 src/pipelines/inference.py run --model-version 3
 """
 
 import os
@@ -40,7 +25,7 @@ from dotenv import load_dotenv
 
 import numpy as np
 import pandas as pd
-from metaflow import (
+from metaflow import (  # type: ignore[attr-defined]
     Parameter,      # For defining command-line parameters
     card,           # For generating visual reports/cards
     current,        # For accessing current run metadata (run_id, etc.)
@@ -54,21 +39,13 @@ root_path = file_path.parent.parent
 if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
-from src.common.pipeline import Pipeline
-from src.common.features import engineer_features
+from src.common.pipeline import Pipeline  # noqa: E402
+from src.common.features import engineer_features  # noqa: E402
 
 load_dotenv()
 
 environment_variables = {
-    # Databricks workspace URL (if using Databricks-hosted MLflow)
-    "DATABRICKS_HOST": os.getenv("DATABRICKS_HOST"),
-    # Personal Access Token for Databricks authentication
-    "DATABRICKS_TOKEN": os.getenv("DATABRICKS_TOKEN"),
-    # Databricks workspace ID for MLflow tracking
-    "DATABRICKS_WORKSPACE_ID": os.getenv("DATABRICKS_WORKSPACE_ID"),
-    # MLflow tracking server URI (local: http://127.0.0.1:5000)
     "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI"),
-    # Name of the MLflow experiment for organizing runs
     "MLFLOW_EXPERIMENT_NAME": os.getenv("MLFLOW_EXPERIMENT_NAME"),
     "MLFLOW_S3_ENDPOINT_URL": os.getenv("MLFLOW_S3_ENDPOINT_URL", ""),
     "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID", ""),
@@ -78,16 +55,7 @@ environment_variables = {
 
 class Inference(Pipeline):
     """
-    Inference Pipeline for NYC Taxi Fare Prediction.
-    
-    This pipeline loads a trained model from the MLflow Model Registry and
-    generates predictions for new taxi trip data. It applies the same feature
-    engineering and preprocessing transformations that were used during training
-    to ensure consistency between training and inference.
-    
-    The pipeline is designed for batch inference, processing multiple records
-    at once. For real-time inference, consider deploying the model as a REST
-    API using MLflow's model serving capabilities or a framework like FastAPI.
+    Batch inference pipeline. Loads ONNX model from MLflow, runs predictions on new data.
     
     Attributes:
     -----------
@@ -152,40 +120,15 @@ class Inference(Pipeline):
     model_name = Parameter(
         "model-name",
         help="""
-        Full Unity Catalog model path in the format: <catalog>.<schema>.<model_name>
-        OR local model path in the format: <path>/<model_name>
-        Unity Catalog uses a three-level namespace for model governance:
-        - Catalog: Top-level container (e.g., 'ml_models')
-        - Schema: Logical grouping within catalog (e.g., 'nyc-taxi')
-        - Model: The registered model name (e.g., 'nyc-taxi-model')
-        
-        This should match the name used when registering the model during training.
+        Registered model name in MLflow Model Registry.
         """,
-        default="ml_models.nyc-taxi.nyc-taxi-model",
+        default="nyc-taxi-model",
     )
 
     model_version = Parameter(
         "model-version",
         help="""
-        Version or alias of the model to load from Unity Catalog.
-        Unity Catalog Options:
-        - 'champion': Use the model with @champion alias (default, recommended)
-        - 'challenger': Use the model with @challenger alias (for A/B testing)
-        - '<number>': Use a specific version number (e.g., '1', '2', '3')
-        
-        OR Model version number (e.g., '1', '2', 'latest') on local file system.
-
-        NOTE: Unity Catalog uses ALIASES instead of the legacy stages 
-        (None/Staging/Production/Archived). Common alias conventions:
-        - @champion: Production-ready, validated model
-        - @challenger: Model being tested against champion
-        
-        BEST PRACTICE: Production inference should always use 'champion' alias.
-        Models should be promoted to 'champion' only after:
-        - Performance validation on holdout data
-        - Explainability analysis (SHAP, LIME)
-        - Bias and fairness checks
-        - Stakeholder approval
+        Model version: 'latest' or a specific version number (e.g., '1', '2')
         """,
         default="latest",
     )
@@ -193,94 +136,43 @@ class Inference(Pipeline):
     output_path = Parameter(
         "output-path",
         help="""
-        Path where the predictions will be saved as a parquet file.
-        The output file will contain the original input data plus a new
-        'predicted_total_amount' column with the model's predictions.
+        Path to save predictions as parquet.
         """,
         default="predictions/batch_predictions.parquet",
     )
 
     # =========================================================================
-    # STEP 1: START
+    # STEP 1: START - Load model and transformer from MLflow
     # =========================================================================
     @card
     @environment(vars=environment_variables)
     @step
     def start(self):
         """
-        Initialize the inference pipeline and load the model from MLflow.
-        
-        This step performs the following operations:
-        1. Connect to the Databricks-hosted MLflow tracking server
-        2. Load the registered model from the Databricks Model Registry
-        3. Load the preprocessing transformer (fitted during training)
-        4. Validate that both artifacts are loaded correctly
-        
-        The model and transformer are stored as instance attributes so they
-        can be accessed in subsequent steps. Metaflow automatically serializes
-        these artifacts and passes them between steps.
-        
-        Databricks MLflow Authentication:
-        ---------------------------------
-        Authentication to Databricks MLflow is handled via environment variables:
-        - DATABRICKS_HOST: The Databricks workspace URL
-        - DATABRICKS_TOKEN: Personal Access Token for authentication
-        - MLFLOW_TRACKING_URI: Set to 'databricks' or the workspace URI
-        
-        These are injected via the @environment decorator from environment_variables.
-        
-        Raises:
-        -------
-        RuntimeError
-            If unable to connect to MLflow or load the model/transformer.
-        
-        Notes:
-        ------
-        - The model is loaded using MLflow's model URI format:
-          models:/<model_name>/<version> or models:/<model_name>/<stage>
-        - The transformer is loaded from the model's artifacts directory
-        - Both artifacts were logged together during the training pipeline's
-          register step to ensure they stay in sync
+        Connect to MLflow, download ONNX model and transformer artifacts.
         """
         import mlflow
         from mlflow.tracking import MlflowClient
         import joblib
         import tempfile
 
-        # ---------------------------------------------------------------------
-        # MLFLOW CONNECTION (DATABRICKS)
-        # ---------------------------------------------------------------------
-        # Connect to the Databricks-hosted MLflow tracking server.
-        # Databricks provides a managed MLflow service that integrates with:
-        # - Unity Catalog for model governance
-        # - Workspace Model Registry for model versioning
-        # - Access control via workspace permissions
-        #
-        # The MLFLOW_TRACKING_URI should be set to 'databricks' or the
-        # full workspace URL (e.g., https://<workspace>.cloud.databricks.com)
-        # ---------------------------------------------------------------------
         self.logger.info("=" * 60)
         self.logger.info("NYC TAXI FARE PREDICTION - INFERENCE PIPELINE")
         self.logger.info("=" * 60)
 
         self.logger.info(f"MLflow tracking server: {self.mlflow_tracking_uri}")
-        self.logger.info(f"Databricks host: {os.environ.get('DATABRICKS_HOST', 'Not set')}")
         self.logger.info(f"Model name: {self.model_name}")
-        self.logger.info(f"Model version/stage: {self.model_version}")
+        self.logger.info(f"Model version: {self.model_version}")
 
         tracking_uri = os.environ["MLFLOW_TRACKING_URI"]
 
         try:
-            # Set the MLflow tracking URI from environment variable
-            # This can be local (127.0.0.1:5000) for experiment tracking
             mlflow.set_tracking_uri(tracking_uri)
             self.logger.info(f"Connected to MLflow at {tracking_uri}")
 
         except Exception as e:
             message = f"Failed to connect to MLflow server: {self.mlflow_tracking_uri}"
             self.logger.error(message)
-            self.logger.error(f"  Error: {str(e)}")
-            self.logger.error("  Check that DATABRICKS_HOST and DATABRICKS_TOKEN are set correctly")
             raise RuntimeError(message) from e
 
         client = MlflowClient()
@@ -401,17 +293,13 @@ class Inference(Pipeline):
             # Load the full dataset
             self.raw_data = pd.read_parquet(str(self.input_data))
             self.n_records = len(self.raw_data)
-            self.logger.info(f"Loaded {len(self.raw_data):,} records")
+            self.logger.info(f"Loaded {self.n_records:,} records")
             
         except FileNotFoundError:
-            message = f"Input file not found: {self.input_data}"
-            self.logger.error(message)
-            raise FileNotFoundError(message)
+            raise FileNotFoundError(f"Input file not found: {self.input_data}")
             
         except Exception as e:
-            message = f"Failed to read input file: {self.input_data}"
-            self.logger.error(message)
-            raise RuntimeError(message) from e
+            raise RuntimeError(f"Failed to read input file: {self.input_data}") from e
 
         # ---------------------------------------------------------------------
         # SCHEMA VALIDATION
@@ -438,9 +326,7 @@ class Inference(Pipeline):
         missing_columns = set(required_columns) - set(self.raw_data.columns)
         
         if missing_columns:
-            message = f"Missing required columns: {missing_columns}"
-            self.logger.error(message)
-            raise ValueError(message)
+            raise ValueError(f"Missing required columns: {missing_columns}")
 
         self.logger.info("All required columns present")
 
@@ -451,20 +337,8 @@ class Inference(Pipeline):
         # These metrics help detect data drift (changes in input distribution)
         # which can indicate that the model may need retraining.
         # ---------------------------------------------------------------------
-        self.logger.info("\nInput Data Statistics:")
-        self.logger.info(f"  Total records: {len(self.raw_data):,}")
-        self.logger.info(f"  Columns: {len(self.raw_data.columns)}")
-        self.logger.info(f"  Memory usage: {self.raw_data.memory_usage(deep=True).sum() / 1e6:.2f} MB")
-        
-        # Log numerical column statistics
-        self.logger.info("\nNumerical column ranges:")
-        for col in ["trip_distance", "fare_amount", "passenger_count"]:
-            if col in self.raw_data.columns:
-                self.logger.info(
-                    f"  {col}: min={self.raw_data[col].min():.2f}, "
-                    f"max={self.raw_data[col].max():.2f}, "
-                    f"mean={self.raw_data[col].mean():.2f}"
-                )
+        self.logger.info(f"Schema OK. Columns: {len(self.raw_data.columns)}, "
+                         f"Memory: {self.raw_data.memory_usage(deep=True).sum() / 1e6:.2f} MB")
 
         # Store the number of records for later validation
         self.n_records = len(self.raw_data)
@@ -598,10 +472,7 @@ class Inference(Pipeline):
 
         self.logger.info("\nPrediction Statistics:")
         for key, value in self.prediction_stats.items():
-            if isinstance(value, float):
-                self.logger.info(f"  {key}: {value:.4f}")
-            else:
-                self.logger.info(f"  {key}: {value:,}")
+            self.logger.info(f"  {key}: {value:.4f}" if isinstance(value, float) else f"{key}: {value:,}")
 
         # ---------------------------------------------------------------------
         # LOG TO MLFLOW
@@ -699,11 +570,7 @@ class Inference(Pipeline):
             self.logger.info(f"\nMLflow Run: {self.mlflow_tracking_uri}/#/experiments/runs/{self.mlflow_run_id}")
 
 
-# =============================================================================
+
 # MAIN ENTRY POINT
-# =============================================================================
-# When this script is run directly, instantiate and execute the pipeline.
-# The Pipeline base class handles CLI argument parsing and execution.
-# =============================================================================
 if __name__ == "__main__":
     Inference()

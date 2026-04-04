@@ -9,29 +9,35 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "metaflow",
-    "mlflow",
-    "databricks-sdk (>=0.73.0,<0.74.0)",
-    "xgboost",
-    "scikit-learn",
-    "joblib",
-    "pandas",
-    "numpy",
-    "python-dotenv",
-    "accelerate",
-    "transformers",
-    "beautifulsoup4",
-    "pyyaml",
-    "loguru",
-    "pydantic",
-    "graphql-core (<3.3.0)",
-    "onnxruntime",
-    "onnxmltools",
+    "evidently>=0.7.21",
+    "joblib>=1.5.3",
+    "kfp>=2.16.0",
+    "loguru>=0.7.3",
+    "metaflow>=2.19.22",
+    "mlflow>=3.10.1",
+    "mypy>=1.20.0",
+    "numpy>=2.4.4",
+    "onnxmltools>=1.16.0",
+    "onnxruntime>=1.24.4",
+    "pandas-stubs>=3.0.0.260204",
+    "pandas>=2.3.3",
+    "prometheus-client>=0.24.1",
+    "pydantic>=2.12.5",
+    "pytest>=9.0.2",
+    "python-dotenv>=1.2.2",
+    "pyyaml>=6.0.3",
+    "ruff>=0.15.9",
+    "scikit-learn>=1.8.0",
+    "streamlit>=1.56.0",
+    "types-pyyaml>=6.0.12.20250915",
+    "types-requests>=2.33.0.20260402",
+    "xgboost>=3.2.0",
 ]
 
-[tool.poetry]
-package-mode=false
+[tool.uv]
+package = false
 
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+exclude = "(?x)(^nyc-taxi-env/|^\\.venv/)"

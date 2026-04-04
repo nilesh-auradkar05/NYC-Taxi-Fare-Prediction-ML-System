@@ -6,19 +6,11 @@ import os
 import sys
 from pathlib import Path
 
-# Add the parent directory to sys.path to allow imports from common
-# This is necessary because the script is run from the root of the repository
-# and the common module is located in src/common
-file_path = Path(__file__).resolve()
-root_path = file_path.parent.parent
-if str(root_path) not in sys.path:
-    sys.path.append(str(root_path))
-
 from dotenv import load_dotenv
 
 import numpy as np
 import pandas as pd
-from metaflow import (
+from metaflow import (  # type: ignore[attr-defined]
     Parameter,
     card,
     current,
@@ -26,7 +18,13 @@ from metaflow import (
     step,
 )
 
-from common.pipeline import Pipeline, dataset
+# Add project root so `src` is importable (same layout as src/pipelines scripts).
+file_path = Path(__file__).resolve()
+root_path = file_path.parent.parent
+if str(root_path) not in sys.path:
+    sys.path.append(str(root_path))
+
+from src.common.pipeline import Pipeline, dataset  # noqa: E402
 
 load_dotenv()
 

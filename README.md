@@ -27,6 +27,7 @@
 # 1. Clone and configure
 git clone https://github.com/nilesh-auradkar05/NYC-Taxi-Fare-Prediction-ML-System.git
 cd NYC-Taxi-Fare-Prediction-ML-System
+git checkout nyc-taxi-prediciton-v2
 cp .env.example .env
 
 # 2. Start infrastructure (MLflow + MinIO)
@@ -45,7 +46,6 @@ docker-compose up -d
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{"pickup_datetime": "2025-01-15 08:30:00",
-       "dropoff_datetime": "2025-01-15 09:15:00",
        "trip_distance": 5.2,
        "passenger_count": 2}'
 ```
@@ -55,6 +55,7 @@ curl -X POST http://localhost:8000/predict \
 | Service | URL | Purpose |
 |---------|-----|---------|
 | **API** | http://localhost:8000 | Fare predictions (Swagger at `/docs`) |
+| **Prometheus Metrics** | http://localhost:8000/metrics | Scrape target for monitoring |
 | **MLflow** | http://localhost:5000 | Experiment tracking UI |
 | **MinIO** | http://localhost:9001 | S3 artifact storage console |
 
@@ -96,20 +97,82 @@ streamlit run src/serving/frontend.py
 
 This isn't a Jupyter notebook that "kind of works." It's a complete MLOps system with:
 
-| Component | What it does | Tech |
-|-----------|--------------|------|
-| **Training Pipeline** | Loads data → engineers 29 features → trains XGBoost → exports ONNX → registers model | Metaflow / KFP v2 |
-| **Inference Pipeline** | Batch predictions on new data via ONNX Runtime | Metaflow |
-| **Model Registry** | Versioned ONNX models with experiment lineage | Self-hosted MLflow |
-| **Experiment Tracking** | Metrics, parameters, artifacts logged automatically | MLflow |
-| **Feature Engineering** | Single source of truth — same function in training, inference, and serving | `common/features.py` |
-| **REST API** | Sub-100ms ONNX Runtime predictions with health checks | FastAPI |
-| **Infrastructure** | MLflow + MinIO + API in one command | Docker Compose |
-| **Web UI** | User-friendly fare estimator with tip calculator | Streamlit |
+| Component | What it does | Status |
+|-----------|-------------|--------|
+| **Training Pipeline** | Time-based split, fold-local CV, XGBoost, ONNX export, MLflow registry | **Implemented** |
+| **Inference Pipeline** | Batch predictions on new data via ONNX Runtime | **Implemented** |
+| **Feature Engineering** | Single source of truth — same function in training, inference, and serving | **Implemented** |
+| **REST API** | Pre-trip fare estimator with ONNX Runtime inference | **Implemented** |
+| **Monitoring** | Prometheus metrics, prediction tracking, Evidently drift detection | **Implemented** |
+| **Model Registry** | Versioned ONNX models with experiment lineage | **Implemented** |
+| **Infrastructure** | MLflow + MinIO + API in one command | **Implemented** |
+| **Web UI** | Streamlit fare estimator | **Implemented** |
+| **KFP Pipeline** | Kubeflow Pipelines v2 DAG with parallel CV | **Experimental** |
+| **Cloud Deployment** | AWS EKS | **Pending** |
+| **Feature Store** | Feast online/offline serving | **Pending** |
+
+
+---
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/predict` | POST | Pre-trip fare prediction |
+| `/health` | GET | Health check for load balancers |
+| `/ready` | GET | Kubernetes readiness probe |
+| `/live` | GET | Kubernetes liveness probe |
+| `/model/info` | GET | Model version and metadata |
+| `/metrics` | GET | Prometheus metrics (latency, counts, distributions) |
+| `/predictions/summary` | GET | Recent prediction statistics |
+| `/drift` | POST | Evidently drift detection on recent predictions |
+
+**Example Request (pre-trip — no dropoff time or fare required):**
+```json
+{
+  "pickup_datetime": "2025-01-15 08:30:00",
+  "trip_distance": 5.2,
+  "passenger_count": 2,
+  "estimated_duration_minutes": 25.0
+}
+```
+
+**Example Response:**
+```json
+{
+  "predicted_fare": 22.50,
+  "estimated_duration_minutes": 25.0,
+  "model_version": "1",
+  "prediction_timestamp": "2025-01-15T10:30:00Z"
+}
+
+---
+
+## Key Engineering Decisions
+
+### Data Leakage Fix
+The original pipeline had features that used `total_amount` (the prediction target) during computation, inflating metrics. Fixed by deriving from `fare_amount` instead and removing redundant features. Cross-validation now uses fold-local preprocessing — each fold fits its own transformer, preventing statistics from leaking across the train/validation boundary.
+
+### Time-Based Evaluation
+Training uses chronological split (first 80% by pickup time, last 20% for testing) instead of random split. This reflects real-world usage where you predict future trips from historical data.
+
+### Pre-Trip Estimator Contract
+The API only requires information available *before* a trip: pickup time, estimated distance, and optional metadata. It does not ask for dropoff time, fare amount, or tip — because no one has that information before the ride starts.
+
+### Unified Feature Module
+`src/common/features.py` is the single source of truth for all feature engineering. Training, batch inference, and the REST API all call the same `engineer_features()` function. No parameter toggles, no code branching.
+
+### Self-Hosted MLflow
+MLflow runs on your infrastructure with MinIO for S3-compatible artifact storage. No vendor lock-in, full experiment tracking, works identically in local dev and production.
+
+### ONNX Runtime Serving
+XGBoost trains normally, converts to ONNX before registration. Serving loads `.onnx` directly — no XGBoost dependency at inference time. Smaller image, faster cold starts.
 
 ---
 
 ## Pipeline Details
+
+---
 
 ### Training Pipeline
 
@@ -132,6 +195,19 @@ The training pipeline runs in two flavors that share the same `common/features.p
 ![Serving Architecture](extras/Serving-arch.png)
 
 The serving layer loads two artifacts: `model.onnx` (ONNX Runtime) and `transformer.joblib` (sklearn ColumnTransformer). Feature engineering uses the same `engineer_features()` function from `common/features.py` — no duplication, no branching, no training-serving skew.
+
+---
+
+## Monitoring
+
+The API tracks every prediction with Prometheus metrics:
+
+- **Request count** by status (success/error)
+- **Latency histogram** (p50, p95, p99)
+- **Prediction value distribution** (fare amounts)
+- **Distance distribution** (trip distances)
+
+A 5,000-record ring buffer stores recent predictions for drift analysis. The `/drift` endpoint runs Evidently's `DataDriftPreset` comparing recent predictions against a reference distribution, flagging shifts in fare, distance, time-of-day, and other features.
 
 ---
 
@@ -213,22 +289,12 @@ Trained on **4.2 million** NYC yellow taxi trips (September 2025):
 
 ---
 
-## API Endpoints
+---
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Liveness check for load balancers |
-| `/model/info` | GET | Model version, type, and metadata |
-| `/predict` | POST | Single trip fare prediction |
+## Tests
 
-**Example Response:**
-```json
-{
-  "predicted_fare": 25.50,
-  "trip_duration_minutes": 45.0,
-  "model_version": "1",
-  "prediction_timestamp": "2025-01-15T10:30:00"
-}
+```bash
+python -m pytest tests/ -v
 ```
 
 ---
@@ -249,30 +315,6 @@ Trained on **4.2 million** NYC yellow taxi trips (September 2025):
 | **Data Versioning** | DVC + S3 | Git-like versioning for datasets |
 | **Feature Transforms** | dbt + Snowflake | SQL-based feature pipelines |
 | **Frontend** | Streamlit | Development UI |
-
----
-
-## Key Design Decisions
-
-### Why ONNX Runtime?
-
-The training pipeline trains XGBoost normally, then converts to ONNX format before registering with MLflow. The serving layer loads the `.onnx` file directly into ONNX Runtime — no XGBoost needed at inference time. This gives you 2-5x faster predictions, a framework-agnostic model format, and a smaller serving image.
-
-### Why Self-Hosted MLflow?
-
-MLflow runs on your infrastructure with S3-compatible storage (MinIO for local dev, real S3 in production). No Databricks authentication required in serving containers. Full experiment tracking and model versioning without vendor lock-in.
-
-### Why Two Orchestrators?
-
-Metaflow and KFP v2 coexist — same `features.py`, same ONNX format, same MLflow registry. Metaflow is simpler for local development. KFP runs on Kubernetes with true container isolation per step, parallel cross-validation via `dsl.ParallelFor`, and conditional model registration via `dsl.Condition`.
-
-### Why a Unified Feature Module?
-
-Feature duplication across training and serving pipelines is the #1 cause of silent prediction degradation. `src/common/features.py` is the single source of truth — one function, no parameters that change behavior, no branching. Change a feature here and it updates everywhere.
-
-### Why Multi-Stage Docker?
-
-The serving image contains only what the API needs: FastAPI, ONNX Runtime, sklearn (for the transformer), pandas, numpy. No XGBoost, no training dependencies, no compiler tools. Builder stage handles compilation, runtime stage stays slim. Non-root user, built-in health checks, ready for K8s probes.
 
 ---
 
@@ -349,7 +391,7 @@ wget https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2025-09.par
 - [x] Kubeflow Pipelines v2 (container components)
 - [x] Data versioning (DVC + S3)
 - [x] dbt + Snowflake feature transforms
-- [ ] Model monitoring & drift detection (Evidently, Prometheus, Grafana)
+- [x] Model monitoring & drift detection (Evidently, Prometheus, Grafana)
 - [ ] React/Next.js frontend
 - [ ] Cloud deployment (AWS EKS)
 

@@ -32,15 +32,11 @@ import os
 import sys
 from pathlib import Path
 
-# Path configuration
-# Add the parent directory to sys.path to allow imports from common module
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 from dotenv import load_dotenv
 
 import numpy as np
 import pandas as pd
-from metaflow import (
+from metaflow import (  # type: ignore[attr-defined]
     Parameter,
     card,
     current,
@@ -48,7 +44,12 @@ from metaflow import (
     step,
 )
 
-from common.pipeline import Pipeline
+file_path = Path(__file__).resolve()
+root_path = file_path.parent.parent
+if str(root_path) not in sys.path:
+    sys.path.insert(0, str(root_path))
+
+from src.common.pipeline import Pipeline  # noqa: E402
 
 load_dotenv()
 
@@ -708,7 +709,6 @@ class Inference(Pipeline):
         The output parquet file contains all original columns plus:
             - predicted_total_amount: The model's fare prediction
         """
-        import os
 
         self.logger.info("=" * 60)
         self.logger.info("STEP 6: END - SAVE PREDICTIONS")

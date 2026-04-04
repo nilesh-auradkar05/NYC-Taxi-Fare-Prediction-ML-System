@@ -5,12 +5,30 @@ NYC Taxi Fare Prediction - KFP Components
 Each component is a self-contained function that runs inside the
 nyc-taxing-training Docker image.
 """
-from collections import namedtuple
+from typing import NamedTuple
 
 from kfp import dsl
 from kfp.dsl import Artifact, Dataset, Input, Metrics, Model, Output
 
 TRAINING_IMAGE = "nyc-taxi-training:latest"
+
+
+class CVOutput(NamedTuple):
+    mse: float
+    r2: float
+
+
+class AggOutput(NamedTuple):
+    avg_mse: float
+    std_mse: float
+    avg_r2: float
+    std_r2: float
+
+
+class TrainOutput(NamedTuple):
+    test_mse: float
+    test_r2: float
+    mlflow_run_id: str
 
 # Component 1: Load Data + Feature Engineering
 
@@ -43,21 +61,24 @@ def transform_and_split_data(
     y_test: Output[Dataset],
     fitted_transformer: Output[Artifact],
 ):
-    """Fit the preprocessing transformer and split into train/test"""
+    """Fit the preprocessing transformer and split into train/test (time-based)."""
 
     import joblib
     import pandas as pd
-    from sklearn.model_selection import train_test_split
+    
     from .features import build_transformer, TARGET_COLUMN
 
     df = pd.read_parquet(engineered_data.path)
+
+    # Time-based split: train on earlier trips, test on later ones
+    df = df.sort_values("tpep_pickup_datetime").reset_index(drop=True)
+    split_idx = int(len(df) * 0.8)
     
     X = df.drop(columns=[TARGET_COLUMN])
     y = df[TARGET_COLUMN]
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=47
-    )
+    X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+    y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
 
     transformer = build_transformer()
     X_train_transformed = transformer.fit_transform(X_train)
@@ -68,8 +89,10 @@ def transform_and_split_data(
     # Save transformed data
     joblib.dump(X_train_transformed, x_train.path)
     joblib.dump(y_train, y_train.path)
+    
     joblib.dump(X_test_transformed, x_test.path)
     joblib.dump(y_test, y_test.path)
+    
     joblib.dump(transformer, fitted_transformer.path)
 
 # Component 3: Cross-Validation Fold
@@ -81,11 +104,10 @@ def cross_validate_fold(
     fold_index: int,
     n_splits: int,
     n_estimators: int,
-) -> namedtuple("CVOutput", ["mse", "r2"]):
+) -> CVOutput:
     """Train and evaluate on a single CV fold."""
 
     import joblib
-    from collections import namedtuple
     from sklearn.metrics import mean_squared_error, r2_score
     from sklearn.model_selection import KFold
     from .features import build_model
@@ -111,7 +133,6 @@ def cross_validate_fold(
 
     print(f"Fold {fold_index + 1}/{n_splits} - MSE: {mse:.4f}, R2: {r2:.4f}")
 
-    CVOutput = namedtuple("CVOutput", ["mse", "r2"])
     return CVOutput(mse=mse, r2=r2)
 
 
@@ -122,11 +143,9 @@ def aggregate_cv_results(
     mse_scores: list,
     r2_scores: list,
     cv_metrics: Output[Metrics],
-) -> namedtuple("AggOutput", ["avg_mse", "std_mse", "avg_r2", "std_r2"]):
-
+) -> AggOutput:
     """Combine cross-validation metrics from all folds."""
     import numpy as np
-    from collections import namedtuple
 
     avg_mse = float(np.mean(mse_scores))
     std_mse = float(np.std(mse_scores))
@@ -142,7 +161,6 @@ def aggregate_cv_results(
     cv_metrics.log_metric("cv_avg_r2", avg_r2)
     cv_metrics.log_metric("cv_std_r2", std_r2)
 
-    AggOutput = namedtuple("AggOutput", ["avg_mse", "std_mse", "avg_r2", "std_r2"])
     return AggOutput(avg_mse=avg_mse, std_mse=std_mse, avg_r2=avg_r2, std_r2=std_r2)
 
 
@@ -163,15 +181,16 @@ def train_final_model(
     std_cv_r2: float,
     trained_model: Output[Model],
     test_metrics: Output[Metrics],
-) -> namedtuple("TrainOutput", ["test_mse", "test_r2", "mlflow_run_id"]):
-
+) -> TrainOutput:
     """Train the final model on the full train set and log to MLFlow"""
     import joblib
     import mlflow
     from sklearn.metrics import mean_squared_error, r2_score
     from .features import build_model
 
-    test_mse = test_r2 = mlflow_run_id = 0.0
+    test_mse = 0.0
+    test_r2 = 0.0
+    mlflow_run_id = ""
     model = None
 
     X_train = joblib.load(x_train.path)
@@ -219,7 +238,6 @@ def train_final_model(
     test_metrics.log_metric("test_mse", test_mse)
     test_metrics.log_metric("test_r2", test_r2)
 
-    TrainOutput = namedtuple("TrainOutput", ["test_mse", "test_r2", "mlflow_run_id"])
     return TrainOutput(test_mse=test_mse, test_r2=test_r2, mlflow_run_id=mlflow_run_id)
 
 # Component 6: ONNX Conversion + MLFlow Registration
@@ -249,7 +267,7 @@ def register_onnx_model(
     mlflow.set_tracking_uri(mlflow_tracking_uri)
     mlflow.set_experiment(mlflow_experiment_name)
 
-    with mlflow.start_run(run_id=mlflow_run_id) as run:
+    with mlflow.start_run(run_id=mlflow_run_id):
         import tempfile
         from pathlib import Path
 

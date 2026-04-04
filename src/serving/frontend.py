@@ -18,8 +18,7 @@ Prerequisites:
 """
 
 import os
-from datetime import datetime, timezone, timedelta
-from tokenize import triple_quoted
+from datetime import datetime
 
 import requests
 import streamlit as st
@@ -204,7 +203,7 @@ def main():
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("**Pickup**")
+        st.markdown("**Pickup Date & Time**")
         pickup_date = st.date_input(
             "Date",
             value=datetime.now().date(),
@@ -217,45 +216,35 @@ def main():
         )
 
     with col2:
-        st.markdown("**Dropoff**")
-        default_dropoff = datetime.now() + timedelta(minutes=30)
-        dropoff_date = st.date_input(
-            "Date",
-            value=default_dropoff.date(),
-            key="dropoff_date",
+        st.markdown("**Trip Estimates**")
+        trip_distance = st.number_input(
+            "Distance (miles)",
+            mmin_value=0.1,
+            max_value=100.0,
+            value=5.0,
+            step=0.1,
+            help="Estimated distance of the trip in miles",
         )
-        dropoff_time = st.time_input(
-            "Time",
-            value=default_dropoff.time(),
-            key="dropoff_time",
+
+        estimated_duration = st.number_input(
+            "Duration (minutes, optional)",
+            min_value=0.0,
+            max_value=300.0,
+            value=0.0,
+            step=1.0,
+            help="Leave at 0 to auto-estimate from distance"
         )
 
     # Combine date and time
     pickup_datetime = datetime.combine(pickup_date, pickup_time)
-    dropoff_datetime = datetime.combine(dropoff_date, dropoff_time)
 
-    # Validate datetime
-    if dropoff_datetime <= pickup_datetime:
-        st.error("Dropoff time must be after pickup time")
-
-    st.markdown("---")
-
-    # Trip distance
-    st.markdown("**Trip Distance**")
-    trip_distance = st.slider(
-        "Distance (miles)",
-        min_value=0.1,
-        max_value=100.0,
-        value=5.0,
-        step=0.1,
-        help="Estimated distance of the trip in miles"
-    )
-
-    # Calculated trip duration
-    trip_duration = (dropoff_datetime - pickup_datetime).total_seconds() / 60
-    if trip_duration > 0:
-        avg_speed = (trip_distance / trip_duration) * 60
-        st.caption(f"Trip Duration: {trip_duration:.0f} min | Avg Speed: {avg_speed:.1f} mph")
+    # Show estimated speed if duration provided
+    if estimated_duration > 0:
+        avg_speed = (trip_distance / estimated_duration) * 60
+        st.caption(f"Estimated Duration: {estimated_duration:.0f} min | Avg Speed: {avg_speed:.1f} mph")
+    else:
+        auto_duration = max(1.0, (trip_distance / 15.0) * 60)
+        st.caption(f"Auto-estimated Duration: {auto_duration:.0f} min (based on ~15 mph avg)")
 
     st.markdown("---")
 
@@ -266,9 +255,9 @@ def main():
             passenger_count = st.number_input(
                 "Passengers",
                 min_value=1,
-                max_value=4,
+                max_value=6,
                 value=1,
-                help="Number of passengers (1-4)"
+                help="Number of passengers"
             )
 
             payment_type = st.selectbox(
@@ -312,31 +301,25 @@ def main():
 
     # Prediciton Button
     predict_button = st.button(
-        "Predict fare",
+        "Predict Fare",
         type="primary",
         use_container_width=True,
     )
 
     if predict_button:
-        # validate inputs
-        if dropoff_datetime <= pickup_datetime:
-            st.error("Dropoff time must be after pickup time")
-            st.stop()
-
         # Prepare trip data
         trip_data = {
             "pickup_datetime": pickup_datetime.strftime("%Y-%m-%d %H:%M:%S"),
-            "dropoff_datetime": dropoff_datetime.strftime("%Y-%m-%d %H:%M:%S"),
             "trip_distance": trip_distance,
             "passenger_count": passenger_count,
             "VendorID": vendor[0],
             "RatecodeID": rate_code[0],
             "payment_type": payment_type[0],
             "store_and_fwd_flag": "N",
-            "fare_amount": 0.0,
-            "tip_amount": 0.0,
-            "tolls_amount": 0.0
         }
+
+        if estimated_duration > 0:
+            trip_data["estimated_duration_minutes"] = estimated_duration
 
         # Show loading spinner
         with st.spinner("Calculating fare..."):
@@ -352,7 +335,7 @@ def main():
             <div class="result-card">
                 <p>Estimated Fare</p>
                 <h1>${predicted_fare:.2f}</h1>
-                <p>Trip Duration: {data["trip_duration_minutes"]:.0f} minutes</p>
+                <p>Estimated Duration: {data["estimated_duration_minutes"]:.0f} minutes</p>
             </div>
             """, unsafe_allow_html=True)
 

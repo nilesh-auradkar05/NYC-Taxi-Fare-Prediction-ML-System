@@ -33,7 +33,7 @@ root_path = Path(__file__).resolve().parent.parent
 if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
-from src.common.kfp_components import (
+from src.common.kfp_components import (  # noqa: E402
     load_and_engineer_features,
     transform_and_split_data,
     cross_validate_fold,

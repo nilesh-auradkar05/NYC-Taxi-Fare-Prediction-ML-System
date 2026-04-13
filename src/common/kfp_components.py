@@ -5,30 +5,17 @@ NYC Taxi Fare Prediction - KFP Components
 Each component is a self-contained function that runs inside the
 nyc-taxing-training Docker image.
 """
-from typing import NamedTuple
+from collections import namedtuple
 
 from kfp import dsl
 from kfp.dsl import Artifact, Dataset, Input, Metrics, Model, Output
 
 TRAINING_IMAGE = "nyc-taxi-training:latest"
 
+CVOutput = namedtuple("CVOutput", ["mse", "r2"])
+AggOutput = namedtuple("AggOutput", ["avg_mse", "std_mse", "avg_r2", "std_r2"])
+TrainOutput = namedtuple("TrainOutput", ["test_mse", "test_r2", "mlflow_run_id"])
 
-class CVOutput(NamedTuple):
-    mse: float
-    r2: float
-
-
-class AggOutput(NamedTuple):
-    avg_mse: float
-    std_mse: float
-    avg_r2: float
-    std_r2: float
-
-
-class TrainOutput(NamedTuple):
-    test_mse: float
-    test_r2: float
-    mlflow_run_id: str
 
 # Component 1: Load Data + Feature Engineering
 

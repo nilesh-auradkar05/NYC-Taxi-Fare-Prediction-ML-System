@@ -45,8 +45,8 @@ from src.common.features import engineer_features  # noqa: E402
 load_dotenv()
 
 environment_variables = {
-    "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI"),
-    "MLFLOW_EXPERIMENT_NAME": os.getenv("MLFLOW_EXPERIMENT_NAME"),
+    "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"),
+    "MLFLOW_EXPERIMENT_NAME": os.getenv("MLFLOW_EXPERIMENT_NAME", "nyc-taxi-model-v2"),
     "MLFLOW_S3_ENDPOINT_URL": os.getenv("MLFLOW_S3_ENDPOINT_URL", ""),
     "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID", ""),
     "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY", ""),
@@ -164,7 +164,7 @@ class Inference(Pipeline):
         self.logger.info(f"Model name: {self.model_name}")
         self.logger.info(f"Model version: {self.model_version}")
 
-        tracking_uri = os.environ["MLFLOW_TRACKING_URI"]
+        tracking_uri = environment_variables["MLFLOW_TRACKING_URI"]
 
         try:
             mlflow.set_tracking_uri(tracking_uri)
@@ -338,7 +338,7 @@ class Inference(Pipeline):
         # which can indicate that the model may need retraining.
         # ---------------------------------------------------------------------
         self.logger.info(f"Schema OK. Columns: {len(self.raw_data.columns)}, "
-                         f"Memory: {self.raw_data.memory_usage(deep=True).sum() / 1e6:.2f} MB")
+                         f"Memory: {self.raw_data.memory_usage(deep=True).sum() / 1e6:.1f} MB")
 
         # Store the number of records for later validation
         self.n_records = len(self.raw_data)
@@ -482,7 +482,7 @@ class Inference(Pipeline):
         # ---------------------------------------------------------------------
         if self.mlflow_run_id:
             try:
-                mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+                mlflow.set_tracking_uri(environment_variables["MLFLOW_TRACKING_URI"])
                 
                 with mlflow.start_run(run_id=self.mlflow_run_id):
                     mlflow.log_metrics(self.prediction_stats)

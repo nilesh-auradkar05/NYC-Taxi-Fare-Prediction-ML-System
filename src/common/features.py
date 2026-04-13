@@ -128,7 +128,7 @@ def engineer_features(df: pd.DataFrame, target_column: str | None = None) -> pd.
     ).astype(int)
 
     df["is_night"] = (
-        (df["pickup_hour"] >= 22 | df["pickup_hour"] <= 5)
+        (df["pickup_hour"] >= 22) | (df["pickup_hour"] <= 5)
     ).astype(int)
 
     df["has_negative_fare"] = (df["fare_amount"] < 0).astype(int)
@@ -137,7 +137,7 @@ def engineer_features(df: pd.DataFrame, target_column: str | None = None) -> pd.
     df["time_of_day"] = pd.cut(
         df["pickup_hour"],
         bins=[-1, 5, 11, 16, 21, 24],
-        labels=["night", "morning", "afternoon", "evening", 'late_night'],
+        labels=["night", "morning", "afternoon", "evening", "late_night"],
     ).astype(str)
 
     df["vendor_payment_interaction"] = (
@@ -151,12 +151,70 @@ def engineer_features(df: pd.DataFrame, target_column: str | None = None) -> pd.
         df[col] = df[col].fillna(median_val)
 
     # Remaining NaNs (e.g. passenger_count) - fill with 0 only for non-ratio columns
-    df.fillna(0)
+    df.fillna(0, inplace=True)
 
     for col in df.select_dtypes(include=["object", "string"]).columns:
         df[col] = df[col].astype(str)
 
     return df
+
+def clean_training_data(
+    df:pd.DataFrame,
+    target_column: str = TARGET_COLUMN,
+    fare_range: tuple = (0.01, 200.0),
+    distance_range: tuple = (0.01, 100.0),
+    duration_range: tuple = (0.5, 300.0),
+) -> tuple[pd.DataFrame, dict]:
+    """
+    Remove outliers and data quality issues from training data.
+
+    Applied only during training - never in serving or inference.
+
+    Parameters:
+        - df: DataFrame after after engineer_features() has been applied.
+        - target_column: Column to filter on fare range.
+        - fare_range: (min, max) for total_amount in dollars.
+        - distance_range: (min, max) for trip_distance in miles.
+        - duration_range: (min, max) for trip_duration_minutes.
+
+    Returns:
+        - Tuple of (cleaned DataFrame, summary dict of rows removed).
+    """
+    n_before = len(df)
+    reasons = {}
+
+    # Filter target variable: remove refunds, zeros, and extreme fares
+    fare_mask = df[target_column].between(fare_range[0], fare_range[1])
+    reasons["fare_out_of_range"] = int((~fare_mask).sum())
+    df = df[fare_mask]
+
+    # Filter distance: remove zero-distance and impossibly long trips
+    dist_mask = df["trip_distance"].between(distance_range[0], distance_range[1])
+    reasons["distance_out_of_range"] = int((~dist_mask).sum())
+    df = df[dist_mask]
+
+    # Filter duration: remove sub-30s trips and 5+ hour trips
+    if "trip_duration_minutes" in df.columns:
+        dur_mask = df["trip_duration_minutes"].between(duration_range[0], duration_range[1])
+        reasons["duration_out_of_range"] = int((~dur_mask).sum())
+        df = df[dur_mask]
+
+    # Filter speed: remove physically impossible speeds (>120 mph)
+    if "speed_mph" in df.columns:
+        speed_mask = df["speed_mph"] <= 120
+        reasons["speed_over_120mph"] = int((~speed_mask).sum())
+        df = df[speed_mask]
+
+    n_after = len(df)
+    summary = {
+        "rows_before": n_before,
+        "rows_after": n_after,
+        "rows_removed": n_before - n_after,
+        "pct_removed": round((n_before - n_after) / n_before * 100, 2),
+        "reasons": reasons,
+    }
+
+    return df.reset_index(drop=True), summary
 
 def build_transformer():
     """

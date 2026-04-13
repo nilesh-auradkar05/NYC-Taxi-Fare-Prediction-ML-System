@@ -1,6 +1,6 @@
 [project]
 name = "nyc-taxi"
-version = "0.1.0"
+version = "0.2.0"
 description = "An End-to-End production grade ML System using metaflow and mlflow. The initial downstream task of the system is to predict the total fare of the trip. Nyc yellow taxi dataset is being used for training of ml models."
 authors = [
     {name = "Nilesh Auradkar",email = "nilesh.auradkar.0599@gmail.com"}
@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "evidently>=0.7.21",
+    "httpx>=0.28.1",
     "joblib>=1.5.3",
     "kfp>=2.16.0",
     "loguru>=0.7.3",
@@ -33,6 +34,8 @@ dependencies = [
     "types-requests>=2.33.0.20260402",
     "xgboost>=3.2.0",
 ]
+
+
 
 [tool.uv]
 package = false

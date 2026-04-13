@@ -13,13 +13,15 @@ import pandas as pd
 from metaflow import step, Parameter, card, current, environment  # type: ignore[attr-defined]
 
 file_path = Path(__file__).resolve()
-root_path = file_path.parent.parent
+root_path = file_path.parent.parent.parent
+print(f"root_path: {root_path}")
 if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
 from src.common.pipeline import Pipeline, dataset  # noqa: E402
 from src.common.features import (  # noqa: E402
     engineer_features,
+    clean_training_data,
     build_transformer,
     build_model,
     convert_to_onnx,
@@ -29,11 +31,8 @@ from src.common.features import (  # noqa: E402
 load_dotenv()
 
 environment_variables = {
-    "DATABRICKS_HOST": os.getenv("DATABRICKS_HOST"),
-    "DATABRICKS_TOKEN": os.getenv("DATABRICKS_TOKEN"),
-    "DATABRICKS_WORKSPACE_ID": os.getenv("DATABRICKS_WORKSPACE_ID"),
-    "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI"),
-    "MLFLOW_EXPERIMENT_NAME": os.getenv("MLFLOW_EXPERIMENT_NAME"),
+    "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"),
+    "MLFLOW_EXPERIMENT_NAME": os.getenv("MLFLOW_EXPERIMENT_NAME", "nyc-taxi-model-v2"),
     "MLFLOW_S3_ENDPOINT_URL": os.getenv("MLFLOW_S3_ENDPOINT_URL", ""),
     "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID", ""),
     "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY", ""),
@@ -64,19 +63,19 @@ class Training(Pipeline):
         """Start and prepare the Training pipeline."""
         import mlflow
 
-        self.logger.info(f"MLflow tracking server: {self.mlflow_tracking_uri}")
-
         self.mode = "production" if current.is_production else "development"
         self.logger.info(f"Running flow in {self.mode} mode")
 
-        try:
-            # 1. Databricks setup
-            mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+        tracking_uri = environment_variables["MLFLOW_TRACKING_URI"]
+        experiment_name = environment_variables["MLFLOW_EXPERIMENT_NAME"]
 
-            # 2. Set the experiment name
-            mlflow.set_experiment(environment_variables["MLFLOW_EXPERIMENT_NAME"])
+        try:
+            mlflow.set_tracking_uri(tracking_uri)
+
+            # Set the experiment name
+            mlflow.set_experiment(experiment_name)
         except Exception as e:
-            message = f"Failed to connect to MLflow server {self.mlflow_tracking_uri}"
+            message = f"Failed to connect to MLflow server {tracking_uri}"
             raise RuntimeError(message) from e
 
         try:
@@ -92,14 +91,24 @@ class Training(Pipeline):
 
     @step
     def feature_engineering(self):
-        """Creating derived features."""
+        """Creating derived features and cleaning outliers."""
         self.logger.info(f"Loading data from {self.data_path}")
         df = pd.read_parquet(self.data_path)
         self.logger.info(f"Loaded {len(df)} rows")
 
         df = engineer_features(df)
+        self.logger.info(f"Engineered {len(df.columns)} columns for {len(df)} rows.")
 
-        self.logger.info(f"Created {len(df)} columns for {len(df)} rows.")
+        # Remove outliers
+        df, clean_summary = clean_training_data(df)
+        self.logger.info(
+            f"Data cleaning: removed {clean_summary['rows_removed']:,} rows "
+            f"({clean_summary['pct_removed']:.1f}%) - {clean_summary['rows_after']:,} remaining"
+        )
+
+        for reason, count in clean_summary["reasons"].items():
+            if count > 0:
+                self.logger.info(f"\t{reason}: {count:,}")
 
         df.to_parquet(self.data_path)
         self.next(self.transform)
@@ -108,12 +117,14 @@ class Training(Pipeline):
     @step
     def transform(self):
         """Apply the transformation pipeline to the dataset."""
-        from sklearn.model_selection import train_test_split
         import joblib
         import gc
 
         self.X_train_path = os.path.abspath(
             f"processed_dataset/X_train_{current.run_id}.joblib"
+        )
+        self.X_train_raw_path = os.path.abspath(
+            f"processed_dataset/X_train_raw_{current.run_id}.joblib"
         )
         self.y_train_path = os.path.abspath(
             f"processed_dataset/y_train_{current.run_id}.joblib"
@@ -128,17 +139,25 @@ class Training(Pipeline):
         self.logger.info(f"Loading data from {self.data_path}....")
         df = pd.read_parquet(self.data_path)
 
+        # Time-based split
+        df = df.sort_values("tpep_pickup_datetime").reset_index(drop=True)
+        split_idx = int(len(df) * 0.8)
+
         # split data
         X = df.drop(columns=[TARGET_COLUMN])
         y = df[TARGET_COLUMN]
 
+        X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+        y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+
+        self.logger.info(
+            f"Time-based split: train {len(X_train):,} rows "
+            f"(up to {X_train['tpep_pickup_datetime'].max()}), "
+            f"test {len(X_test):,} rows"
+        )
+
         del df
         gc.collect()
-
-        # Split into train/test
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
 
         # We need to ensure all features in the list exist in X
         # For now, just filtering the list tot what's available or add missing columns as 0
@@ -154,10 +173,11 @@ class Training(Pipeline):
 
         # Save
         self.logger.info("Saving transformed data to disk....")
-        joblib.dump(X_train_transformed, self.X_train_path)
-        joblib.dump(y_train, self.y_train_path)
-        joblib.dump(X_test_transformed, self.X_test_path)
-        joblib.dump(y_test, self.y_test_path)
+        joblib.dump(X_train_transformed, self.X_train_path, compress=3)
+        joblib.dump(X_train, self.X_train_raw_path, compress=3)
+        joblib.dump(y_train, self.y_train_path, compress=3)
+        joblib.dump(X_test_transformed, self.X_test_path, compress=3)
+        joblib.dump(y_test, self.y_test_path, compress=3)
 
         del X_train, X_test, y_train, y_test, X_train_transformed, X_test_transformed
         gc.collect()
@@ -176,23 +196,23 @@ class Training(Pipeline):
         kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
         # Load X_train to get indices
-        X_train = joblib.load(self.X_train_path)
+        X_train_raw = joblib.load(self.X_train_raw_path)
 
         # Index needs to reset of X_train to ensure iloc works correctly with KFold indices
         self.folds = []
-        for fold_num, (train_idx, val_idx) in enumerate(kf.split(X_train)):
+        for fold_num, (train_idx, val_idx) in enumerate(kf.split(X_train_raw)):
             self.folds.append((train_idx.tolist(), val_idx.tolist()))
             self.logger.info(
                 f"Fold {fold_num}: Train {len(train_idx):,} train, {len(val_idx):,} val"
             )
 
-        del X_train
+        del X_train_raw
 
         self.next(self.cross_validation, foreach="folds")
 
     @step
     def cross_validation(self):
-        """Run cross-validation on a single fold."""
+        """Run cross-validation on a single fold with fold-local preprocessing."""
         from sklearn.metrics import mean_squared_error, r2_score
         import joblib
 
@@ -203,31 +223,31 @@ class Training(Pipeline):
             f"Training with Fold {fold_id + 1}: {len(train_idx):,} train, {len(val_idx):,} val"
         )
         # Load data
-        X_train = joblib.load(self.X_train_path)
+        X_train_raw = joblib.load(self.X_train_raw_path)
         y_train = joblib.load(self.y_train_path)
 
-        # Split data for this fold
-        X_fold_train = X_train[train_idx]
+        # Split raw data for this fold
+        X_fold_train = X_train_raw.iloc[train_idx]
         y_fold_train = y_train.iloc[train_idx]
-        X_fold_val = X_train[val_idx]
+        X_fold_val = X_train_raw.iloc[val_idx]
         y_fold_val = y_train.iloc[val_idx]
 
         # Fit a New transformer on this fold's training data
-        # transformer = build_features_transformer()
-        # X_fold_train_transformed = transformer.fit_transform(X_fold_train)
-        # X_fold_val_transformed = transformer.transform(X_fold_val)
+        fold_transformer = build_transformer()
+        X_fold_train_transformed = fold_transformer.fit_transform(X_fold_train)
+        X_fold_val_transformed = fold_transformer.transform(X_fold_val)
 
-        # Train model
+        # Train model on fold-local transformed data
         model = build_model(n_estimators=self.training_epochs)
         model.fit(
-            X_fold_train,
+            X_fold_train_transformed,
             y_fold_train,
-            eval_set=[(X_fold_val, y_fold_val)],
+            eval_set=[(X_fold_val_transformed, y_fold_val)],
             verbose=False,
         )
 
         # Evaluate
-        y_pred = model.predict(X_fold_val)
+        y_pred = model.predict(X_fold_val_transformed)
         self.cv_metrics = {
             "mse": mean_squared_error(y_fold_val, y_pred),
             "r2": r2_score(y_fold_val, y_pred),
@@ -269,7 +289,7 @@ class Training(Pipeline):
 
         try:
             # 1. MLFlow setup
-            mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+            mlflow.set_tracking_uri(environment_variables["MLFLOW_TRACKING_URI"])
 
             # 2. Set the experiment name
             mlflow.set_experiment(environment_variables["MLFLOW_EXPERIMENT_NAME"])
@@ -334,7 +354,7 @@ class Training(Pipeline):
         import joblib
 
         try:
-            mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+            mlflow.set_tracking_uri(environment_variables["MLFLOW_TRACKING_URI"])
             mlflow.set_experiment(environment_variables["MLFLOW_EXPERIMENT_NAME"])
         except Exception as e:
             message = f"Failed to connect to MLflow server {self.mlflow_tracking_uri}"

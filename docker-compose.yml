@@ -69,7 +69,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.Serving
     container_name: nyc-taxi-api
     ports:
       - "8000:8000"

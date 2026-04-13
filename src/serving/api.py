@@ -86,7 +86,7 @@ class TripInput(BaseModel):
     pickup_datetime: str = Field(
         ...,
         description="Trip pickup date and time (format: 'YYYY-MM-DD HH:MM:SS')",
-        examples=["2024-01-15 08:30:00"],
+        examples=["2026-01-15 08:30:00"],
     )
 
     trip_distance: float = Field(
@@ -168,7 +168,7 @@ def trip_to_dataframe(trip: TripInput) -> pd.DataFrame:
     
     Estimates dropoff time from distance if duration not provided.
     Financial fields (fare, tip, tolls) are set to 0 since they are
-    unknown pre-trip; the model was trained with theses fields but will
+    unknown pre-trip; the model was trained with these fields but will
     learn to rely on distance/time/metadata features for pre-trip estimates.
     """
     pickup_dt = pd.to_datetime(trip.pickup_datetime)
@@ -192,9 +192,9 @@ def trip_to_dataframe(trip: TripInput) -> pd.DataFrame:
         "store_and_fwd_flag": trip.store_and_fwd_flag,
         "payment_type": trip.payment_type,
         # Financial fields unknown pre-trip
-        "fare_amount": 0,
-        "tip_amount": 0,
-        "tolls_amount": 0,
+        "fare_amount": 0.0,
+        "tip_amount": 0.0,
+        "tolls_amount": 0.0,
         # Columns present in training data but not user-provided
         "extra": 0.0,
         "mta_tax": 0.5,
@@ -346,34 +346,8 @@ async def predict(trip: TripInput):
     """
     Estimate/Predict the total fare for a taxi trip before it starts.
 
-    This endpoint accepts trip details and returns a fare prediction.
-    The prediction includes:
-        - Predicted total fare amount
-        - Calculated trip duration
-        - Model version used
-        - Prediction timestamp
-
-    ## Example Request
-    ```json
-    {
-        "pickup_datetime": "2024-01-15 08:30:00",
-        "dropoff_datetime": "2024-01-15 09:15:00",
-        "trip_distance": 5.2,
-        "passenger_count": 2,
-        "VendorID": 1,
-        "payment_type": 1
-    }
-    ```
-    
-    ## Example Response
-    ```json
-    {
-        "predicted_fare": 25.50,
-        "trip_duration_minutes": 45.0,
-        "model_version": "1",
-        "prediction_timestamp": "2024-01-15T10:30:00"
-    }
-    ```
+    Accepts pickup time, estimated distance, and optional metadata.
+    Returns predicted fare, estimated duration, and model version.
     """
     # Validate Model is loaded
     if not hasattr(app.state, "model"):
@@ -390,7 +364,6 @@ async def predict(trip: TripInput):
         raw_df = trip_to_dataframe(trip)
         df = engineer_features(raw_df)
         df = df.drop(columns=["total_amount"], errors="ignore")
-        logger.debug(f"Processing prediction request: {trip.pickup_datetime}")
 
         # Transform and predict
         X = app.state.transformer.transform(df)
@@ -450,7 +423,9 @@ async def predict(trip: TripInput):
             detail=f"Prediction failed: {str(e)}"
         )
 
+# =============================================================================
 # Monitoring ENDPOINTS
+# =============================================================================
 
 @app.get("/metrics", tags=["Monitoring"])
 async def metrics():

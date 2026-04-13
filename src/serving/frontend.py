@@ -219,7 +219,7 @@ def main():
         st.markdown("**Trip Estimates**")
         trip_distance = st.number_input(
             "Distance (miles)",
-            mmin_value=0.1,
+            min_value=0.1,
             max_value=100.0,
             value=5.0,
             step=0.1,

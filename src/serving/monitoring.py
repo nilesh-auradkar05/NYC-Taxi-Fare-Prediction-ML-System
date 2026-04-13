@@ -150,7 +150,7 @@ def generate_drift_report(
     Run Evidently drift detection comparing reference vs current predictions.
 
     Parameters:
-        reference_df: DataFrame of refernce (training-time) prediction distribution.
+        reference_df: DataFrame of reference (training-time) prediction distribution.
         current_df: DataFrame of recent predictions from the tracker.
 
     Returns:

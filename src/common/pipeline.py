@@ -19,7 +19,8 @@ from metaflow import (
     current,
     user_step_decorator,
 )
-from metaflow import project  # type: ignore[attr-defined]
+
+from metaflow import project # type: ignore[attr-defined]
 
 
 @user_step_decorator
@@ -194,7 +195,7 @@ def parse_project_configuration(x):
     # If the mlflow tracking uri is not part of the configuration, we will set it to the
     # `MLFLOW_TRACKING_URI` environment variable.
     if "mlflow_tracking_uri" not in config:
-        config["mlflow_tracking_uri"] = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
+        config["mlflow_tracking_uri"] = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
 
     if "backend" not in config:
         config["backend"] = {"module": "backend.Local"}
@@ -246,6 +247,6 @@ class Pipeline(FlowSpec):
 
     mlflow_tracking_uri = Parameter(
         "mlflow-tracking-uri",
-        help="MLflow tracking URI.",
-        default="http://127.0.0.1:5000",
+        help="MLflow tracking URI. Use sqlite:///mlflow.db for local.",
+        default="sqlite:///mlflow.db",
     )

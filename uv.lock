@@ -2177,7 +2177,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.4.4" },
     { name = "onnxmltools", specifier = ">=1.16.0" },
     { name = "onnxruntime", specifier = ">=1.24.4" },
-    { name = "pandas", specifier = ">=2.3.3" },
+    { name = "pandas", specifier = "<3.0.0" },
     { name = "pandas-stubs", specifier = ">=3.0.0.260204" },
     { name = "prometheus-client", specifier = ">=0.24.1" },
     { name = "pydantic", specifier = ">=2.12.5" },

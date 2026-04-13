@@ -11,7 +11,7 @@
   "n_estimators": 100,
   "split_method": "time-based (chronological 80/20)",
   "cv_method": "5-fold with fold-local preprocessing",
-  "train_time_seconds": 41.9,
+  "train_time_seconds": 56.1,
   "cv_r2_mean": 0.9959441942794145,
   "cv_r2_std": 4.774554918552997e-05,
   "cv_rmse_mean": 1.323468062202592,

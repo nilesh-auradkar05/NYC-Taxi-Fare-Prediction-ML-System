@@ -219,6 +219,45 @@ def trip_to_dataframe(trip: TripInput) -> pd.DataFrame:
 # Application lifespan
 
 
+def load_model_artifacts(app: FastAPI, model_cache_dir: str | Path = MODEL_CACHE_DIR) -> None:
+    """Load cached model artifacts into app state."""
+    cache = Path(model_cache_dir)
+
+    model_path = cache / "model.onnx"
+    transformer_path = cache / "transformer.joblib"
+    metadata_path = cache / "metadata.json"
+
+    if not model_path.exists() or not transformer_path.exists():
+        raise FileNotFoundError(
+            f"Model artifacts not found in {model_cache_dir}. "
+            "Run 'python or python3 src/serving/download_model.py' first."
+        )
+
+    logger.info(f"Loading ONNX model from {model_path}...")
+    app.state.model = ort.InferenceSession(
+        str(model_path),
+        providers=["CPUExecutionProvider"],
+    )
+    app.state.onnx_input_name = app.state.model.get_inputs()[0].name
+    logger.info(f" Model loaded: (input: '{app.state.onnx_input_name}')")
+
+    logger.info(f"Loading transformer from {transformer_path}")
+    app.state.transformer = joblib.load(transformer_path)
+    logger.info(f" Transformer loaded: {type(app.state.transformer).__name__}")
+
+    app.state.metadata = json.loads(metadata_path.read_text()) if metadata_path.exists() else {}
+
+    MODEL_INFO.info(
+        {
+            "name": app.state.metadata.get("model_name", "unknown"),
+            "version": app.state.metadata.get("model_version", "unknown"),
+            "format": "ONNX",
+        }
+    )
+
+    app.state.startup_time = time.time()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -232,44 +271,7 @@ async def lifespan(app: FastAPI):
     # Load Model artifacts
     logger.info("Starting NYC Taxi Fare Prediction API...")
 
-    cache = Path(MODEL_CACHE_DIR)
-
-    MODEL_PATH = cache / "model.onnx"
-    TRANSFORMER_PATH = cache / "transformer.joblib"
-    METADATA_PATH = cache / "metadata.json"
-
-    if not MODEL_PATH.exists() or not TRANSFORMER_PATH.exists():
-        raise FileNotFoundError(
-            f"Model artifacts not found in {MODEL_CACHE_DIR}. "
-            "Run 'python or python3 src/serving/download_model.py' first."
-        )
-
-    # load model
-    logger.info(f"Loading ONNX model from {MODEL_PATH}...")
-    app.state.model = ort.InferenceSession(
-        str(MODEL_PATH),
-        providers=["CPUExecutionProvider"],
-    )
-    app.state.onnx_input_name = app.state.model.get_inputs()[0].name
-    logger.info(f" Model loaded: (input: '{app.state.onnx_input_name}')")
-
-    # load transformer
-    logger.info(f"Loading transformer from {TRANSFORMER_PATH}")
-    app.state.transformer = joblib.load(TRANSFORMER_PATH)
-    logger.info(f" Transformer loaded: {type(app.state.transformer).__name__}")
-
-    app.state.metadata = json.loads(METADATA_PATH.read_text()) if METADATA_PATH.exists() else {}
-
-    # Register model info with Prometheus
-    MODEL_INFO.info(
-        {
-            "name": app.state.metadata.get("model_name", "unknown"),
-            "version": app.state.metadata.get("model_version", "unknown"),
-            "format": "ONNX",
-        }
-    )
-
-    app.state.startup_time = time.time()
+    load_model_artifacts(app)
 
     logger.info("")
     logger.info("    API ready to serve predictions!")

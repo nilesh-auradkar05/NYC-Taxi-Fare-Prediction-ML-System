@@ -27,3 +27,13 @@ output "pipeline_alert_topic_arn" {
   description = "SNS topic ARN for pipeline alerts."
   value       = module.sns.pipeline_alert_topic_arn
 }
+
+output "manifest_table_name" {
+  description = "DynamoDB ingestion manifest table name."
+  value       = module.manifest_table.table_name
+}
+
+output "fetch_lambda_function_name" {
+  description = "TLC fetch Lambda function name."
+  value       = module.lambda_fetch.function_name
+}

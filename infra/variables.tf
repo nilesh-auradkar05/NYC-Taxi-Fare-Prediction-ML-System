@@ -38,3 +38,15 @@ variable "agent_athena_scan_cutoff_bytes" {
   type        = number
   default     = 104857600 # 100 MB
 }
+
+variable "lambda_runtime" {
+  description = "Python runtime for Lambda functions."
+  type        = string
+  default     = "python3.14"
+}
+
+variable "tlc_source_base_url" {
+  description = "Base URL for TLC trip data parquet files."
+  type        = string
+  default     = "https://d37ci6vzurychx.cloudfront.net/trip-data"
+}

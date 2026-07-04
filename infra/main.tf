@@ -28,6 +28,12 @@ module "glue_catalog" {
   }
 }
 
+module "manifest_table" {
+  source = "./modules/manifest_table"
+
+  name_prefix = local.name_prefix
+}
+
 module "sns" {
   source = "./modules/sns"
 
@@ -53,7 +59,19 @@ module "iam" {
   artifacts_bucket_name = module.s3_lakehouse.bucket_names["artifacts"]
 
   glue_database_names      = module.glue_catalog.database_names
+  manifest_table_arn       = module.manifest_table.table_arn
   pipeline_alert_topic_arn = module.sns.pipeline_alert_topic_arn
+}
+
+module "lambda_fetch" {
+  source = "./modules/lambda_fetch"
+
+  name_prefix         = local.name_prefix
+  pipeline_role_arn   = module.iam.pipeline_role_arn
+  bronze_bucket_name  = module.s3_lakehouse.bucket_names["bronze"]
+  manifest_table_name = module.manifest_table.table_name
+  lambda_runtime      = var.lambda_runtime
+  tlc_source_base_url = var.tlc_source_base_url
 }
 
 module "athena" {

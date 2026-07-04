@@ -1,7 +1,7 @@
 [project]
 name = "nyc-taxi"
 version = "0.2.0"
-description = "An End-to-End production grade ML System using metaflow and mlflow. The initial downstream task of the system is to predict the total fare of the trip. Nyc yellow taxi dataset is being used for training of ml models."
+description = "An End-to-End production grade ML System using MLflow. The initial downstream task of the system is to predict the total fare of the trip. Nyc yellow taxi dataset is being used for training of ml models."
 authors = [
     {name = "Nilesh Auradkar",email = "nilesh.auradkar.0599@gmail.com"}
 ]
@@ -9,12 +9,13 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "boto3>=1.43.40",
+    "botocore>=1.43.40",
     "evidently>=0.7.21",
     "httpx>=0.28.1",
     "joblib>=1.5.3",
     "kfp>=2.16.0",
     "loguru>=0.7.3",
-    "metaflow>=2.19.22",
     "mlflow>=3.10.1",
     "mypy>=1.20.0",
     "numpy>=2.4.4",

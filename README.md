@@ -3,7 +3,6 @@
 **Production-grade ML system for NYC taxi fare prediction. ONNX Runtime inference, self-hosted MLflow, Docker Compose infrastructure, Kubeflow Pipelines orchestration, and a unified feature engineering module that eliminates training-serving skew.**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Metaflow](https://img.shields.io/badge/pipeline-Metaflow-purple.svg)](https://metaflow.org/)
 [![KFP v2](https://img.shields.io/badge/pipeline-Kubeflow_Pipelines-blue.svg)](https://www.kubeflow.org/docs/components/pipelines/)
 [![MLflow](https://img.shields.io/badge/tracking-MLflow-blue.svg)](https://mlflow.org/)
 [![ONNX](https://img.shields.io/badge/inference-ONNX_Runtime-orange.svg)](https://onnxruntime.ai/)
@@ -180,7 +179,7 @@ XGBoost trains normally, converts to ONNX before registration. Serving loads `.o
 
 The training pipeline runs in two flavors that share the same `common/features.py` module and produce the same ONNX model format:
 
-**Metaflow** — `python src/pipelines/training.py run` — single-process execution with `foreach` parallelism for cross-validation. Good for local development and iteration.
+**Local Python runner** — `python src/pipelines/training.py run` — single-process execution with fold-local cross-validation. Good for local development and iteration.
 
 **Kubeflow Pipelines** — `python src/pipelines/kfp_pipeline.py` — each step runs in its own container via `dsl.ParallelFor`. Registration is gated by `dsl.Condition` on the R² threshold. Production-ready on Kubernetes.
 
@@ -227,13 +226,13 @@ A 5,000-record ring buffer stores recent predictions for drift analysis. The `/d
 ├── src/
 │   ├── common/
 │   │   ├── features.py           # Single source of truth for feature engineering
-│   │   └── pipeline.py           # Base Metaflow pipeline class + decorators
+│   │   └── pipeline.py           # Shared local runner helpers
 │   │
 │   ├── pipelines/
 │   │   ├── kfp_components.py     # KFP v2 container components (6 steps)
 │   │   ├── kfp_pipeline.py       # KFP pipeline DAG + compiler/submitter
-│   │   ├── training.py           # Metaflow training pipeline
-│   │   └── inference.py          # Metaflow batch inference (ONNX Runtime)
+│   │   ├── training.py           # Local training runner
+│   │   └── inference.py          # Local batch inference runner (ONNX Runtime)
 │   │
 │   └── serving/
 │       ├── api.py                # FastAPI prediction service (ONNX Runtime)
@@ -306,7 +305,7 @@ python -m pytest tests/ -v
 | Layer | Tool | Purpose |
 |-------|------|---------|
 | **Training** | XGBoost, scikit-learn | Model training with cross-validation |
-| **Orchestration** | Metaflow, Kubeflow Pipelines v2 | Pipeline execution (local and K8s) |
+| **Orchestration** | Local Python runners, Kubeflow Pipelines v2 | Pipeline execution (local and K8s) |
 | **Model Format** | ONNX | Framework-agnostic, 2-5x faster inference |
 | **Experiment Tracking** | MLflow (self-hosted) | Metrics, parameters, model registry |
 | **Artifact Storage** | MinIO / AWS S3 | ONNX models, transformers, datasets |
@@ -356,7 +355,7 @@ pip install -r requirements.txt
 - Python 3.11+
 - XGBoost, scikit-learn, pandas, numpy
 - ONNX Runtime, onnxmltools
-- Metaflow, MLflow
+- MLflow
 - FastAPI, uvicorn, streamlit
 - kfp (for Kubeflow Pipelines)
 - loguru, python-dotenv
@@ -379,7 +378,7 @@ wget https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2025-09.par
 
 ![Project Milestone](extras/project-milestone.png)
 
-- [x] Training pipeline with Metaflow
+- [x] Training pipeline with local Python runner
 - [x] MLflow experiment tracking
 - [x] FastAPI serving layer
 - [x] Streamlit frontend
@@ -407,7 +406,7 @@ wget https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2025-09.par
 | How do you serve predictions? | FastAPI + ONNX Runtime with sub-100ms latency |
 | How do you track experiments? | MLflow logging every run automatically |
 | How do you handle training-serving skew? | Single `engineer_features()` function — same code everywhere |
-| How do you orchestrate? | Metaflow (local dev) + Kubeflow Pipelines (Kubernetes) |
+| How do you orchestrate? | Local Python runner (local dev) + Kubeflow Pipelines (Kubernetes) |
 | How do you deploy? | Docker Compose (local) → AWS EKS (production) |
 
 ---

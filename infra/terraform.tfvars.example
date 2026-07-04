@@ -1,0 +1,9 @@
+project_name       = "nyc-mobility-v3"
+environment        = "dev"
+aws_region         = "us-east-1"
+budget_alert_email = "your-email@example.com"
+
+force_destroy_buckets = false
+
+engineering_athena_scan_cutoff_bytes = 1073741824
+agent_athena_scan_cutoff_bytes       = 104857600

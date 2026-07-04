@@ -20,11 +20,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.common.features import (
-    engineer_features,
-    build_transformer,
-    build_model,
-    convert_to_onnx,
     TARGET_COLUMN,
+    build_model,
+    build_transformer,
+    convert_to_onnx,
+    engineer_features,
 )
 
 
@@ -37,26 +37,27 @@ def _make_training_data(n=200):
     durations = distances * rng.uniform(2.0, 5.0, size=n)  # minutes
     fares = 2.50 + distances * 2.50 + durations * 0.50  # rough NYC formula
 
-    df = pd.DataFrame({
-        "tpep_pickup_datetime": [
-            base + pd.Timedelta(hours=int(rng.integers(0, 720)))
-            for _ in range(n)
-        ],
-        "tpep_dropoff_datetime": [
-            base + pd.Timedelta(hours=int(rng.integers(0, 720)), minutes=int(d))
-            for d in durations
-        ],
-        "trip_distance": distances,
-        "passenger_count": rng.integers(1, 5, size=n),
-        "fare_amount": fares + rng.normal(0, 2, size=n),
-        "tip_amount": fares * rng.uniform(0, 0.25, size=n),
-        "tolls_amount": rng.choice([0.0, 0.0, 0.0, 5.76, 6.55], size=n),
-        "VendorID": rng.integers(1, 3, size=n),
-        "payment_type": rng.integers(1, 5, size=n),
-        "RatecodeID": rng.integers(1, 7, size=n),
-        "store_and_fwd_flag": rng.choice(["Y", "N"], size=n),
-        "total_amount": fares + rng.normal(0, 3, size=n),
-    })
+    df = pd.DataFrame(
+        {
+            "tpep_pickup_datetime": [
+                base + pd.Timedelta(hours=int(rng.integers(0, 720))) for _ in range(n)
+            ],
+            "tpep_dropoff_datetime": [
+                base + pd.Timedelta(hours=int(rng.integers(0, 720)), minutes=int(d))
+                for d in durations
+            ],
+            "trip_distance": distances,
+            "passenger_count": rng.integers(1, 5, size=n),
+            "fare_amount": fares + rng.normal(0, 2, size=n),
+            "tip_amount": fares * rng.uniform(0, 0.25, size=n),
+            "tolls_amount": rng.choice([0.0, 0.0, 0.0, 5.76, 6.55], size=n),
+            "VendorID": rng.integers(1, 3, size=n),
+            "payment_type": rng.integers(1, 5, size=n),
+            "RatecodeID": rng.integers(1, 7, size=n),
+            "store_and_fwd_flag": rng.choice(["Y", "N"], size=n),
+            "total_amount": fares + rng.normal(0, 3, size=n),
+        }
+    )
     return df
 
 
@@ -109,11 +110,13 @@ def client(model_cache_dir):
     # Override the cache dir before importing the app
     os.environ["MODEL_CACHE_DIR"] = model_cache_dir
 
-    from fastapi.testclient import TestClient
-
     # Force re-import to pick up the new env var
     import importlib
+
+    from fastapi.testclient import TestClient
+
     import src.serving.api as api_module
+
     importlib.reload(api_module)
 
     with TestClient(api_module.app) as c:
@@ -125,10 +128,13 @@ class TestE2EPredict:
 
     def test_minimal_predict(self, client):
         """Minimal request: just pickup_datetime and trip_distance."""
-        response = client.post("/predict", json={
-            "pickup_datetime": "2025-06-15 08:30:00",
-            "trip_distance": 5.0,
-        })
+        response = client.post(
+            "/predict",
+            json={
+                "pickup_datetime": "2025-06-15 08:30:00",
+                "trip_distance": 5.0,
+            },
+        )
         assert response.status_code == 200
         data = response.json()
         assert "predicted_fare" in data
@@ -139,16 +145,19 @@ class TestE2EPredict:
 
     def test_predict_with_all_options(self, client):
         """Full request with all optional fields."""
-        response = client.post("/predict", json={
-            "pickup_datetime": "2025-01-15 17:30:00",
-            "trip_distance": 12.5,
-            "estimated_duration_minutes": 35.0,
-            "passenger_count": 3,
-            "RatecodeID": 2,
-            "VendorID": 2,
-            "payment_type": 2,
-            "store_and_fwd_flag": "Y",
-        })
+        response = client.post(
+            "/predict",
+            json={
+                "pickup_datetime": "2025-01-15 17:30:00",
+                "trip_distance": 12.5,
+                "estimated_duration_minutes": 35.0,
+                "passenger_count": 3,
+                "RatecodeID": 2,
+                "VendorID": 2,
+                "payment_type": 2,
+                "store_and_fwd_flag": "Y",
+            },
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["predicted_fare"] > 0
@@ -156,34 +165,48 @@ class TestE2EPredict:
 
     def test_predict_fare_scales_with_distance(self, client):
         """Longer trips should generally predict higher fares."""
-        short = client.post("/predict", json={
-            "pickup_datetime": "2025-06-15 10:00:00",
-            "trip_distance": 1.0,
-        }).json()
+        short = client.post(
+            "/predict",
+            json={
+                "pickup_datetime": "2025-06-15 10:00:00",
+                "trip_distance": 1.0,
+            },
+        ).json()
 
-        long = client.post("/predict", json={
-            "pickup_datetime": "2025-06-15 10:00:00",
-            "trip_distance": 15.0,
-        }).json()
+        long = client.post(
+            "/predict",
+            json={
+                "pickup_datetime": "2025-06-15 10:00:00",
+                "trip_distance": 15.0,
+            },
+        ).json()
 
-        assert long["predicted_fare"] > short["predicted_fare"], \
-            f"15-mile trip (${long['predicted_fare']}) should cost more than 1-mile (${short['predicted_fare']})"
+        assert long["predicted_fare"] > short["predicted_fare"], (
+            f"15-mile trip (${long['predicted_fare']}) should cost more "
+            f"than 1-mile (${short['predicted_fare']})"
+        )
 
     def test_predict_returns_positive_fare(self, client):
         """Fare should never be negative."""
-        response = client.post("/predict", json={
-            "pickup_datetime": "2025-03-01 03:00:00",
-            "trip_distance": 0.5,
-        })
+        response = client.post(
+            "/predict",
+            json={
+                "pickup_datetime": "2025-03-01 03:00:00",
+                "trip_distance": 0.5,
+            },
+        )
         assert response.json()["predicted_fare"] >= 0
 
     def test_auto_duration_estimation(self, client):
         """When no duration provided, should estimate from distance."""
-        response = client.post("/predict", json={
-            "pickup_datetime": "2025-06-15 12:00:00",
-            "trip_distance": 15.0,
-            # no estimated_duration_minutes
-        })
+        response = client.post(
+            "/predict",
+            json={
+                "pickup_datetime": "2025-06-15 12:00:00",
+                "trip_distance": 15.0,
+                # no estimated_duration_minutes
+            },
+        )
         data = response.json()
         # 15 miles at 15 mph avg = ~60 min
         assert 50 <= data["estimated_duration_minutes"] <= 70
@@ -224,10 +247,13 @@ class TestE2EHealth:
     def test_predictions_summary(self, client):
         """After predictions, summary should have data."""
         # Fire a prediction first
-        client.post("/predict", json={
-            "pickup_datetime": "2025-06-15 08:30:00",
-            "trip_distance": 5.0,
-        })
+        client.post(
+            "/predict",
+            json={
+                "pickup_datetime": "2025-06-15 08:30:00",
+                "trip_distance": 5.0,
+            },
+        )
         response = client.get("/predictions/summary")
         assert response.status_code == 200
         data = response.json()

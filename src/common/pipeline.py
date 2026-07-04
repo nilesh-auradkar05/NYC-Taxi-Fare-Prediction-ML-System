@@ -17,10 +17,9 @@ from metaflow import (
     Parameter,
     config_expr,
     current,
+    project,  # type: ignore[attr-defined]
     user_step_decorator,
 )
-
-from metaflow import project # type: ignore[attr-defined]
 
 
 @user_step_decorator
@@ -33,6 +32,7 @@ def dataset(step_name, flow, inputs=None, attr=None):
     """
     import gc
     import os
+
     import numpy as np
     import pyarrow.parquet as pq
 

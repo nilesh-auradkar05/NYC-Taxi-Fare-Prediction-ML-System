@@ -22,20 +22,21 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.common.features import (
-    engineer_features,
-    clean_training_data,
-    build_transformer,
-    build_model,
-    convert_to_onnx,
-    TARGET_COLUMN,
-    NUMERICAL_FEATURES,
     CATEGORICAL_FEATURES,
+    NUMERICAL_FEATURES,
+    TARGET_COLUMN,
+    build_model,
+    build_transformer,
+    clean_training_data,
+    convert_to_onnx,
+    engineer_features,
 )
+
 
 def generate_synthetic_data(n: int = 5000, seed: int = 47) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
@@ -49,7 +50,9 @@ def generate_synthetic_data(n: int = 5000, seed: int = 47) -> pd.DataFrame:
     durations_min = distances * rng.uniform(2.0, 6.0, size=n) + rng.normal(0, 2, size=n)
     durations_min = np.maximum(durations_min, 1.0)
 
-    dropoffs = [p + pd.Timedelta(minutes=float(d)) for p, d in zip(pickups, durations_min)]
+    dropoffs = [
+        p + pd.Timedelta(minutes=float(d)) for p, d in zip(pickups, durations_min, strict=True)
+    ]
 
     # NYC fare structure: $3 base + $2.50/mile + surcharges + noise
     fares = 3.0 + distances * 2.50 + rng.normal(0, 2, size=n)
@@ -61,7 +64,7 @@ def generate_synthetic_data(n: int = 5000, seed: int = 47) -> pd.DataFrame:
         fares * rng.uniform(0.10, 0.25, size=n),
     )
     tolls = rng.choice([0.0, 0.0, 0.0, 0.0, 5.76, 6.55, 17.34], size=n)
-    surcharges = 0.50 + 0.30 + 2.50 # MTA + improvement + congestion
+    surcharges = 0.50 + 0.30 + 2.50  # MTA + improvement + congestion
 
     totals = fares + tips + tolls + surcharges + rng.normal(0, 1, size=n)
     totals = np.maximum(totals, 3.0)
@@ -71,36 +74,39 @@ def generate_synthetic_data(n: int = 5000, seed: int = 47) -> pd.DataFrame:
     fares[neg_mask] = -fares[neg_mask]
     totals[neg_mask] = -totals[neg_mask]
 
-    return pd.DataFrame({
-        "tpep_pickup_datetime": pickups,
-        "tpep_dropoff_datetime": dropoffs,
-        "trip_distance": distances,
-        "passenger_count": rng.integers(0, 7, size=n),
-        "fare_amount": fares,
-        "tip_amount": tips,
-        "tolls_amount": tolls,
-        "VendorID": rng.integers(1, 3, size=n),
-        "payment_type": rng.integers(1, 5, size=n),
-        "RatecodeID": rng.choice([1, 1, 1, 1, 2, 3, 4, 5, 6], size=n),
-        "store_and_fwd_flag": rng.choice(["N", "N", "N", "Y"], size=n),
-        "extra": rng.choice([0, 0.5, 1.0, 2.5], size=n),
-        "mta_tax": np.full(n, 0.5),
-        "improvement_surcharge": np.full(n, 0.3),
-        "congestion_surcharge": rng.choice([0, 2.5, 2.5, 2.5], size=n),
-        "Airport_fee": rng.choice([0, 0, 0, 1.75], size=n),
-        "total_amount": totals,
-    })
+    return pd.DataFrame(
+        {
+            "tpep_pickup_datetime": pickups,
+            "tpep_dropoff_datetime": dropoffs,
+            "trip_distance": distances,
+            "passenger_count": rng.integers(0, 7, size=n),
+            "fare_amount": fares,
+            "tip_amount": tips,
+            "tolls_amount": tolls,
+            "VendorID": rng.integers(1, 3, size=n),
+            "payment_type": rng.integers(1, 5, size=n),
+            "RatecodeID": rng.choice([1, 1, 1, 1, 2, 3, 4, 5, 6], size=n),
+            "store_and_fwd_flag": rng.choice(["N", "N", "N", "Y"], size=n),
+            "extra": rng.choice([0, 0.5, 1.0, 2.5], size=n),
+            "mta_tax": np.full(n, 0.5),
+            "improvement_surcharge": np.full(n, 0.3),
+            "congestion_surcharge": rng.choice([0, 2.5, 2.5, 2.5], size=n),
+            "Airport_fee": rng.choice([0, 0, 0, 1.75], size=n),
+            "total_amount": totals,
+        }
+    )
+
 
 def run_evaluation(df: pd.DataFrame, n_cv_folds: int = 5, n_estimators: int = 100) -> dict:
-    print("="*60)
+    print("=" * 60)
     print("NYC Taxi - RETRAIN & EVALUATE V2")
-    print("="*60)
+    print("=" * 60)
 
     # 1. Feature Engineering
     t0 = time.time()
     print(f"\n[1/6] Engineering features on {len(df):,} rows....")
     df = engineer_features(df)
-    print(f"\t->{len(df.columns)} columns, {time.time()-t0:.1f}s")
+    print(f"\t->{len(df.columns)} columns, {time.time() - t0:.1f}s")
 
     # 1b. Data Cleaning
     print("\n[2/7] Cleaning outliers (training data only)....")
@@ -113,7 +119,7 @@ def run_evaluation(df: pd.DataFrame, n_cv_folds: int = 5, n_estimators: int = 10
 
     # 2. Time-based split
     print("\n[3/7] Time-based train/test split....")
-    df  = df.sort_values("tpep_pickup_datetime").reset_index(drop=True)
+    df = df.sort_values("tpep_pickup_datetime").reset_index(drop=True)
     split_idx = int(len(df) * 0.8)
 
     X = df.drop(columns=[TARGET_COLUMN])
@@ -141,7 +147,8 @@ def run_evaluation(df: pd.DataFrame, n_cv_folds: int = 5, n_estimators: int = 10
 
         fold_model = build_model(n_estimators=n_estimators)
         fold_model.fit(
-            X_fold_train, y_train.iloc[train_idx],
+            X_fold_train,
+            y_train.iloc[train_idx],
             eval_set=[(X_fold_val, y_train.iloc[val_idx])],
             verbose=False,
         )
@@ -153,7 +160,7 @@ def run_evaluation(df: pd.DataFrame, n_cv_folds: int = 5, n_estimators: int = 10
         cv_mses.append(mse)
         cv_r2s.append(r2)
         cv_maes.append(mae)
-        print(f"\tFold {fold_num+1}: R2={r2:.4f}, RMSE=${mse**0.5:.2f}, MAE=${mae:.2f}")
+        print(f"\tFold {fold_num + 1}: R2={r2:.4f}, RMSE=${mse**0.5:.2f}, MAE=${mae:.2f}")
 
     cv_results = {
         "cv_r2_mean": float(np.mean(cv_r2s)),
@@ -165,7 +172,9 @@ def run_evaluation(df: pd.DataFrame, n_cv_folds: int = 5, n_estimators: int = 10
     }
 
     print(f"\n\tCV Average: R2={cv_results['cv_r2_mean']:.4f} (±{cv_results['cv_r2_std']:.4f})")
-    print(f"\tCV Average: RMSE=${cv_results['cv_rmse_mean']:.2f} (±{cv_results['cv_rmse_std']:.2f})")
+    print(
+        f"\tCV Average: RMSE=${cv_results['cv_rmse_mean']:.2f} (±{cv_results['cv_rmse_std']:.2f})"
+    )
 
     # 4. Final model on full training set
     print(f"\n[5/7] Training final model on full training set({len(X_train):,} rows)....")
@@ -176,7 +185,8 @@ def run_evaluation(df: pd.DataFrame, n_cv_folds: int = 5, n_estimators: int = 10
 
     final_model = build_model(n_estimators=n_estimators)
     final_model.fit(
-        X_train_transformed, y_train,
+        X_train_transformed,
+        y_train,
         eval_set=[(X_test_transformed, y_test)],
         verbose=False,
     )
@@ -211,10 +221,11 @@ def run_evaluation(df: pd.DataFrame, n_cv_folds: int = 5, n_estimators: int = 10
     # 6. ONNX conversion
     print("\n[7/7] Converting to ONNX....")
     onnx_model = convert_to_onnx(final_model, final_transformer)
-    import onnxruntime as ort
     import tempfile
 
-    with tempfile.NamedTemporaryFile(suffix='.onxx', delete=False) as f:
+    import onnxruntime as ort
+
+    with tempfile.NamedTemporaryFile(suffix=".onxx", delete=False) as f:
         f.write(onnx_model.SerializeToString())
         onnx_path = f.name
 
@@ -258,28 +269,38 @@ def run_evaluation(df: pd.DataFrame, n_cv_folds: int = 5, n_estimators: int = 10
 
     return report
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Retrain NYC Taxi model with the fixed pipeline and produce honest metrics."
     )
     parser.add_argument(
-        "--data", type=str, default=None,
+        "--data",
+        type=str,
+        default=None,
         help="Path to parquet file (e.g., Dataset/yellow_tripdata_2025-09.parquet)",
     )
     parser.add_argument(
-        "--synthetic", action="store_true",
+        "--synthetic",
+        action="store_true",
         help="Use synthetic data instead of real data (for pipeline testing)",
     )
     parser.add_argument(
-        "--samples", type=int, default=5000,
+        "--samples",
+        type=int,
+        default=5000,
         help="Number of synthetic samples to generate (default: 5000)",
     )
     parser.add_argument(
-        "--estimators", type=int, default=100,
+        "--estimators",
+        type=int,
+        default=100,
         help="Number of XGBoost estimators (default: 100)",
     )
     parser.add_argument(
-        "--output", type=str, default="metrics/evaluation_report.json",
+        "--output",
+        type=str,
+        default="metrics/evaluation_report.json",
         help="Output path for metrics report (default: metrics/evaluation_report.json)",
     )
     args = parser.parse_args()

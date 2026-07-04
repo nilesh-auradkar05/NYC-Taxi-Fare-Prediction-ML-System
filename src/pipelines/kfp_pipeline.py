@@ -24,8 +24,8 @@ Usage:
 """
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from kfp import compiler, dsl
 
@@ -34,13 +34,14 @@ if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
 from src.common.kfp_components import (  # noqa: E402
-    load_and_engineer_features,
-    transform_and_split_data,
-    cross_validate_fold,
     aggregate_cv_results,
-    train_final_model,
+    cross_validate_fold,
+    load_and_engineer_features,
     register_onnx_model,
+    train_final_model,
+    transform_and_split_data,
 )
+
 
 @dsl.pipeline(
     name="nyc-taxi-training",

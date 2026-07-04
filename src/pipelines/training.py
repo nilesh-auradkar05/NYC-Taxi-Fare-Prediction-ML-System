@@ -6,11 +6,10 @@ import os
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 import numpy as np
 import pandas as pd
-from metaflow import step, Parameter, card, current, environment  # type: ignore[attr-defined]
+from dotenv import load_dotenv
+from metaflow import Parameter, card, current, environment, step  # type: ignore[attr-defined]
 
 file_path = Path(__file__).resolve()
 root_path = file_path.parent.parent.parent
@@ -18,15 +17,15 @@ print(f"root_path: {root_path}")
 if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
-from src.common.pipeline import Pipeline, dataset  # noqa: E402
 from src.common.features import (  # noqa: E402
-    engineer_features,
-    clean_training_data,
-    build_transformer,
-    build_model,
-    convert_to_onnx,
     TARGET_COLUMN,
+    build_model,
+    build_transformer,
+    clean_training_data,
+    convert_to_onnx,
+    engineer_features,
 )
+from src.common.pipeline import Pipeline, dataset  # noqa: E402
 
 load_dotenv()
 
@@ -38,10 +37,12 @@ environment_variables = {
     "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY", ""),
 }
 
+
 class Training(Pipeline):
     """Training pipeline from the NYC Taxi dataset.
 
-    This pipeline trains, evaluates, and registers a model to predict the total amount of a taxi trip.
+    This pipeline trains, evaluates, and registers a model to predict the
+    total amount of a taxi trip.
     """
 
     training_epochs = Parameter(
@@ -117,24 +118,17 @@ class Training(Pipeline):
     @step
     def transform(self):
         """Apply the transformation pipeline to the dataset."""
-        import joblib
         import gc
 
-        self.X_train_path = os.path.abspath(
-            f"processed_dataset/X_train_{current.run_id}.joblib"
-        )
+        import joblib
+
+        self.X_train_path = os.path.abspath(f"processed_dataset/X_train_{current.run_id}.joblib")
         self.X_train_raw_path = os.path.abspath(
             f"processed_dataset/X_train_raw_{current.run_id}.joblib"
         )
-        self.y_train_path = os.path.abspath(
-            f"processed_dataset/y_train_{current.run_id}.joblib"
-        )
-        self.X_test_path = os.path.abspath(
-            f"processed_dataset/X_test_{current.run_id}.joblib"
-        )
-        self.y_test_path = os.path.abspath(
-            f"processed_dataset/y_test_{current.run_id}.joblib"
-        )
+        self.y_train_path = os.path.abspath(f"processed_dataset/y_train_{current.run_id}.joblib")
+        self.X_test_path = os.path.abspath(f"processed_dataset/X_test_{current.run_id}.joblib")
+        self.y_test_path = os.path.abspath(f"processed_dataset/y_test_{current.run_id}.joblib")
 
         self.logger.info(f"Loading data from {self.data_path}....")
         df = pd.read_parquet(self.data_path)
@@ -187,8 +181,8 @@ class Training(Pipeline):
     @step
     def prepare_cross_validation(self):
         """Prepare indices for cross validation."""
-        from sklearn.model_selection import KFold
         import joblib
+        from sklearn.model_selection import KFold
 
         self.logger.info("Preparing cross-validation folds....")
 
@@ -213,8 +207,8 @@ class Training(Pipeline):
     @step
     def cross_validation(self):
         """Run cross-validation on a single fold with fold-local preprocessing."""
-        from sklearn.metrics import mean_squared_error, r2_score
         import joblib
+        from sklearn.metrics import mean_squared_error, r2_score
 
         train_idx, val_idx = self.input
         fold_id = self.index
@@ -252,7 +246,9 @@ class Training(Pipeline):
             "mse": mean_squared_error(y_fold_val, y_pred),
             "r2": r2_score(y_fold_val, y_pred),
         }
-        self.logger.info(f"Fold {fold_id + 1} metrics - MSE: {self.cv_metrics['mse']:.4f}, R2: {self.cv_metrics['r2']:.4f}.")
+        mse = self.cv_metrics["mse"]
+        r2 = self.cv_metrics["r2"]
+        self.logger.info(f"Fold {fold_id + 1} metrics - MSE: {mse:.4f}, R2: {r2:.4f}.")
 
         self.next(self.evaluate_cross_validation)
 
@@ -280,10 +276,11 @@ class Training(Pipeline):
     @step
     def train(self):
         """Train the model"""
-        import mlflow
-        import joblib
-        from sklearn.metrics import mean_squared_error, r2_score
         import gc
+
+        import joblib
+        import mlflow
+        from sklearn.metrics import mean_squared_error, r2_score
 
         self.logger.info("Training Final Model on full training dataset....")
 
@@ -324,20 +321,24 @@ class Training(Pipeline):
 
             self.logger.info(f"Test MSE: {self.mse:.4f}, Test R2: {self.r2:.4f}")
 
-            mlflow.log_metrics({
-                "test_mse": float(self.mse),
-                "test_r2": float(self.r2),
-                "cv_avg_mse": float(self.avg_cv_mse),
-                "cv_std_mse": float(self.std_cv_mse),
-                "cv_avg_r2": float(self.avg_cv_r2),
-                "cv_std_r2": float(self.std_cv_r2),
-            })
+            mlflow.log_metrics(
+                {
+                    "test_mse": float(self.mse),
+                    "test_r2": float(self.r2),
+                    "cv_avg_mse": float(self.avg_cv_mse),
+                    "cv_std_mse": float(self.std_cv_mse),
+                    "cv_avg_r2": float(self.avg_cv_r2),
+                    "cv_std_r2": float(self.std_cv_r2),
+                }
+            )
 
-            mlflow.log_params({
-                "training_epochs": int(self.training_epochs),
-                "accuracy_threshold": float(self.accuracy_threshold),
-                "mode": self.mode,
-            })
+            mlflow.log_params(
+                {
+                    "training_epochs": int(self.training_epochs),
+                    "accuracy_threshold": float(self.accuracy_threshold),
+                    "mode": self.mode,
+                }
+            )
 
         # --- Cleanup to free memory before next step ---
         del X_train, y_train, X_test, y_test
@@ -350,8 +351,9 @@ class Training(Pipeline):
     def register(self):
         """Register the model in the model registery"""
         import tempfile
-        import mlflow
+
         import joblib
+        import mlflow
 
         try:
             mlflow.set_tracking_uri(environment_variables["MLFLOW_TRACKING_URI"])
@@ -362,8 +364,10 @@ class Training(Pipeline):
 
         if float(self.r2) >= float(self.accuracy_threshold):
             self.registered = True
+            r2 = float(self.r2)
+            accuracy_threshold = float(self.accuracy_threshold)
             self.logger.info(
-                f"R2 ({float(self.r2):.4f}) >= accuracy threshold ({float(self.accuracy_threshold)}). Registering model...."
+                f"R2 ({r2:.4f}) >= accuracy threshold ({accuracy_threshold}). Registering model...."
             )
 
             # Convert XGBoost model to ONNX

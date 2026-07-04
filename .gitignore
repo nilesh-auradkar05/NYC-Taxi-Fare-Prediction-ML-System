@@ -251,24 +251,57 @@ colab_run.ipynb
 predictions/
 processed_data/
 scripts/fix_mlflow_paths.py
-.github
 .metaflow
-.mypy_cache
 .pytest_cache
 .ruff_cache
-.venv
 127.0.0.1_5000
-Dataset
 docs
 mlarticats
-mlruns
 nyc-taxi-env
 agent-tasks.md
 check.py
-mlflow.db
-mlflow.db
+
 NYC-Taxi-project-corrected-roadmap-final.docx
 spec.md
 sprint-plan.md
 Untitled0.ipynb
 verify_loading.py
+
+# MLflow / local artifacts
+mlflow.db
+mlartifacts/
+models/cache/
+predictions/
+outputs/**/*.parquet
+outputs/**/*.duckdb
+outputs/**/*.csv
+
+# AWS / secrets
+.env
+.env.*
+*.pem
+.aws/
+terraform.tfstate
+terraform.tfstate.*
+.terraform/
+
+# PowerBI generated
+*.pbix
+*.pbit
+*.DataMashup
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
+
+# Local Terraform variables
+infra/terraform.tfvars
+infra/*.auto.tfvars

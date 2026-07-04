@@ -26,39 +26,39 @@ Usage:
         -H "Content-Type: application/json" \\
         -d '{"pickup_datetime": "2024-01-15 08:30:00", ....}'
 """
-from src.common.features import engineer_features
-from src.serving.monitoring import (
-    REQUEST_COUNT,
-    REQUEST_LATENCY,
-    PREDICTION_VALUE,
-    PREDICTION_DISTANCE,
-    MODEL_INFO,
-    PREDICTIONS_SERVED,
-    LAST_PREDICTION_TIME,
-    get_metrics_text,
-    prediction_tracker,
-    PredictionRecord,
-    generate_drift_report,
-)
 
+import json
 import os
 import sys
-import json
 import time
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional
 from contextlib import asynccontextmanager
-import onnxruntime as ort
-
-import numpy as np
-import pandas as pd
-import joblib
-from fastapi import FastAPI, HTTPException, status, Response
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
+
+import joblib
+import numpy as np
+import onnxruntime as ort
+import pandas as pd
+from fastapi import FastAPI, HTTPException, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+from pydantic import BaseModel, Field
+
+from src.common.features import engineer_features
+from src.serving.monitoring import (
+    LAST_PREDICTION_TIME,
+    MODEL_INFO,
+    PREDICTION_DISTANCE,
+    PREDICTION_VALUE,
+    PREDICTIONS_SERVED,
+    REQUEST_COUNT,
+    REQUEST_LATENCY,
+    PredictionRecord,
+    generate_drift_report,
+    get_metrics_text,
+    prediction_tracker,
+)
 
 file_path = Path(__file__).resolve()
 root_path = file_path.parent.parent
@@ -66,9 +66,9 @@ if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
 
-
 # Config
 MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "models/cache")
+
 
 # Request/Response Schemas
 class TripInput(BaseModel):
@@ -78,10 +78,11 @@ class TripInput(BaseModel):
     This schema defines all the fields a client can provide to get a
     fare prediction. Some fields are required (like pickup/dropoff times),
     while others have sensible defaults.
-    
+
     The API performs feature engineering on these inputs to create the
     features expected by the ML model.
     """
+
     # Required Fields
     pickup_datetime: str = Field(
         ...,
@@ -125,7 +126,9 @@ class TripInput(BaseModel):
         default=1,
         ge=1,
         le=6,
-        description="Rate code (1=Standard, 2=JFK, 3=Newark, 4=Nassau/Westchester, 5=Negotiated, 6=Group)",
+        description=(
+            "Rate code (1=Standard, 2=JFK, 3=Newark, 4=Nassau/Westchester, 5=Negotiated, 6=Group)"
+        ),
         examples=[1],
     )
 
@@ -139,6 +142,7 @@ class TripInput(BaseModel):
 
     store_and_fwd_flag: Literal["Y", "N"] = Field(default="N")
 
+
 class PredictionResponse(BaseModel):
     """
     Response schema for fare predictions.
@@ -151,21 +155,24 @@ class PredictionResponse(BaseModel):
     model_version: str
     prediction_timestamp: datetime
 
+
 class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
     timestamp: str
 
+
 class ModelInfoResponse(BaseModel):
     model_name: str
     model_version: str
-    model_alias: Optional[str] = None
+    model_alias: str | None = None
     model_type: str
     transformer_type: str
 
+
 def trip_to_dataframe(trip: TripInput) -> pd.DataFrame:
     """Convert pre-trip API request into a single-row DataFrame matching training schema.
-    
+
     Estimates dropoff time from distance if duration not provided.
     Financial fields (fare, tip, tolls) are set to 0 since they are
     unknown pre-trip; the model was trained with these fields but will
@@ -182,29 +189,35 @@ def trip_to_dataframe(trip: TripInput) -> pd.DataFrame:
 
     dropoff_dt = pickup_dt + pd.Timedelta(minutes=duration_min)
 
-    return pd.DataFrame([{
-        "tpep_pickup_datetime": pickup_dt,
-        "tpep_dropoff_datetime": dropoff_dt,
-        "trip_distance": trip.trip_distance,
-        "passenger_count": trip.passenger_count,
-        "VendorID": trip.VendorID,
-        "RatecodeID": trip.RatecodeID,
-        "store_and_fwd_flag": trip.store_and_fwd_flag,
-        "payment_type": trip.payment_type,
-        # Financial fields unknown pre-trip
-        "fare_amount": 0.0,
-        "tip_amount": 0.0,
-        "tolls_amount": 0.0,
-        # Columns present in training data but not user-provided
-        "extra": 0.0,
-        "mta_tax": 0.5,
-        "improvement_surcharge": 0.3,
-        "congestion_surcharge": 2.5,
-        "Airport_fee": 0.0,
-        "total_amount": 0.0,
-    }])
+    return pd.DataFrame(
+        [
+            {
+                "tpep_pickup_datetime": pickup_dt,
+                "tpep_dropoff_datetime": dropoff_dt,
+                "trip_distance": trip.trip_distance,
+                "passenger_count": trip.passenger_count,
+                "VendorID": trip.VendorID,
+                "RatecodeID": trip.RatecodeID,
+                "store_and_fwd_flag": trip.store_and_fwd_flag,
+                "payment_type": trip.payment_type,
+                # Financial fields unknown pre-trip
+                "fare_amount": 0.0,
+                "tip_amount": 0.0,
+                "tolls_amount": 0.0,
+                # Columns present in training data but not user-provided
+                "extra": 0.0,
+                "mta_tax": 0.5,
+                "improvement_surcharge": 0.3,
+                "congestion_surcharge": 2.5,
+                "Airport_fee": 0.0,
+                "total_amount": 0.0,
+            }
+        ]
+    )
+
 
 # Application lifespan
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -239,7 +252,7 @@ async def lifespan(app: FastAPI):
     )
     app.state.onnx_input_name = app.state.model.get_inputs()[0].name
     logger.info(f" Model loaded: (input: '{app.state.onnx_input_name}')")
-    
+
     # load transformer
     logger.info(f"Loading transformer from {TRANSFORMER_PATH}")
     app.state.transformer = joblib.load(TRANSFORMER_PATH)
@@ -248,17 +261,19 @@ async def lifespan(app: FastAPI):
     app.state.metadata = json.loads(METADATA_PATH.read_text()) if METADATA_PATH.exists() else {}
 
     # Register model info with Prometheus
-    MODEL_INFO.info({
-        "name": app.state.metadata.get("model_name", "unknown"),
-        "version": app.state.metadata.get("model_version", "unknown"),
-        "format": "ONNX",
-    })
+    MODEL_INFO.info(
+        {
+            "name": app.state.metadata.get("model_name", "unknown"),
+            "version": app.state.metadata.get("model_version", "unknown"),
+            "format": "ONNX",
+        }
+    )
 
     app.state.startup_time = time.time()
 
     logger.info("")
     logger.info("    API ready to serve predictions!")
-    logger.info("="*60)
+    logger.info("=" * 60)
 
     yield
 
@@ -299,6 +314,7 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
+
 # API Endpoints
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check():
@@ -316,8 +332,9 @@ async def health_check():
     return HealthResponse(
         status="On" if hasattr(app.state, "model") else "Off",
         model_loaded=hasattr(app.state, "model"),
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
     )
+
 
 @app.get("/model/info", response_model=ModelInfoResponse)
 async def model_info():
@@ -329,8 +346,7 @@ async def model_info():
     """
     if not hasattr(app.state, "model"):
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Model not loaded"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Model not loaded"
         )
 
     return ModelInfoResponse(
@@ -340,6 +356,7 @@ async def model_info():
         model_type="ONNX (XGBoost)",
         transformer_type=type(app.state.transformer).__name__,
     )
+
 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(trip: TripInput):
@@ -353,8 +370,7 @@ async def predict(trip: TripInput):
     if not hasattr(app.state, "model"):
         REQUEST_COUNT.labels(status="error").inc()
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Model not loaded"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Model not loaded"
         )
 
     start_time = time.time()
@@ -367,12 +383,12 @@ async def predict(trip: TripInput):
 
         # Transform and predict
         X = app.state.transformer.transform(df)
-        
+
         if hasattr(X, "toarray"):
             X = X.toarray()
 
         X = X.astype(np.float32)
-        
+
         output = app.state.model.run(None, {app.state.onnx_input_name: X})
         prediction = max(0.0, float(output[0].flatten()[0]))
 
@@ -393,25 +409,27 @@ async def predict(trip: TripInput):
 
         # Calculate trip duration
         pickup_dt = pd.to_datetime(trip.pickup_datetime)
-        prediction_tracker.record(PredictionRecord(
-            timestamp=time.time(),
-            predicted_fare=prediction,
-            trip_distance=trip.trip_distance,
-            pickup_hour=pickup_dt.hour,
-            is_rush_hour=int(pickup_dt.hour in range(7, 10) or pickup_dt.hour in range(16, 19)),
-            is_weekend=int(pickup_dt.weekday() >= 5),
-            passenger_count=trip.passenger_count,
-            duration_minutes=duration,
-        ))
+        prediction_tracker.record(
+            PredictionRecord(
+                timestamp=time.time(),
+                predicted_fare=prediction,
+                trip_distance=trip.trip_distance,
+                pickup_hour=pickup_dt.hour,
+                is_rush_hour=int(pickup_dt.hour in range(7, 10) or pickup_dt.hour in range(16, 19)),
+                is_weekend=int(pickup_dt.weekday() >= 5),
+                passenger_count=trip.passenger_count,
+                duration_minutes=duration,
+            )
+        )
 
-        logger.debug(f"Prediction: ${prediction:.2f}, latency: {latency*1000:.1f}ms")
+        logger.debug(f"Prediction: ${prediction:.2f}, latency: {latency * 1000:.1f}ms")
 
         # Return Response
         return PredictionResponse(
             predicted_fare=round(prediction, 2),
             estimated_duration_minutes=round(duration, 2),
             model_version=app.state.metadata.get("model_version", "unknown"),
-            prediction_timestamp=datetime.now(timezone.utc),
+            prediction_timestamp=datetime.now(UTC),
         )
 
     except Exception as e:
@@ -420,12 +438,14 @@ async def predict(trip: TripInput):
         logger.error(f"Prediction failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Prediction failed: {str(e)}"
-        )
+            detail=f"Prediction failed: {str(e)}",
+        ) from e
+
 
 # =============================================================================
 # Monitoring ENDPOINTS
 # =============================================================================
+
 
 @app.get("/metrics", tags=["Monitoring"])
 async def metrics():
@@ -434,6 +454,7 @@ async def metrics():
         content=get_metrics_text(),
         media_type="text/plain; charset=utf-8",
     )
+
 
 @app.get("/ready", tags=["Health"])
 async def readiness():
@@ -449,6 +470,7 @@ async def readiness():
         raise HTTPException(status_code=503, detail="Transformer not loaded")
     return {"ready": True}
 
+
 @app.get("/live", tags=["Health"])
 async def liveness():
     """
@@ -458,10 +480,12 @@ async def liveness():
     """
     return {"live": True}
 
+
 @app.get("/predictions/summary", tags=["Monitoring"])
 async def predictions_summary():
     "Summary statistics of recent predictions from the ring buffer."
     return prediction_tracker.get_summary()
+
 
 @app.post("/drift", tags=["Monitoring"])
 async def drift_check():
@@ -477,7 +501,7 @@ async def drift_check():
         raise HTTPException(
             status_code=400,
             detail="Need at least 100 predictions for drift analysis, "
-                   f"currently have {len(current_df)}. Keep sending requests.",
+            f"currently have {len(current_df)}. Keep sending requests.",
         )
 
     # Use the first half as reference, second half as current
@@ -488,7 +512,9 @@ async def drift_check():
     result = generate_drift_report(reference_df, recent_df)
     return result
 
+
 # Main Entry point
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True, log_level="info")

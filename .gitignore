@@ -289,3 +289,19 @@ terraform.tfstate.*
 *.pbix
 *.pbit
 *.DataMashup
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
+
+# Local Terraform variables
+infra/terraform.tfvars
+infra/*.auto.tfvars

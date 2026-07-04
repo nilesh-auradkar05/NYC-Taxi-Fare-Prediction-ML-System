@@ -27,7 +27,7 @@
 # 1. Clone and configure
 git clone https://github.com/nilesh-auradkar05/NYC-Taxi-Fare-Prediction-ML-System.git
 cd NYC-Taxi-Fare-Prediction-ML-System
-git checkout nyc-taxi-prediciton-v2
+git checkout nyc-taxi-prediction-v2
 cp .env.example .env
 
 # 2. Start infrastructure (MLflow + MinIO)

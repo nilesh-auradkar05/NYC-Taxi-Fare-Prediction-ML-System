@@ -35,7 +35,8 @@ st.set_page_config(
 )
 
 # Custom CSS for styling
-st.markdown("""
+st.markdown(
+    """
 <style>
     /* Main container styling */
     .main {
@@ -84,9 +85,12 @@ st.markdown("""
         font-size: 0.9rem;
     }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # Helper functions
+
 
 def check_api_status() -> bool:
     """
@@ -109,7 +113,7 @@ def check_api_status() -> bool:
 
 def get_model_info() -> dict:
     """Fetch model information from the API
-    
+
     Returns:
         dict: Model metadata or empty dict if unavailable
     """
@@ -121,13 +125,14 @@ def get_model_info() -> dict:
     except requests.exceptions.RequestException:
         return {}
 
+
 def predict_fare(trip_data: dict) -> dict:
     """
     Send prediction request to the API
 
     parameters:
         trip_data: Dictionary containing trip details
-    
+
     Returns:
         dict: Prediction result or error message
     """
@@ -141,27 +146,28 @@ def predict_fare(trip_data: dict) -> dict:
         if response.status_code == 200:
             return {"success": True, "data": response.json()}
         else:
-            return {
-                "success": False,
-                "error": response.json().get("detail", "Unknown error")
-            }
+            return {"success": False, "error": response.json().get("detail", "Unknown error")}
 
     except requests.exceptions.RequestException as e:
         return {"success": False, "error": str(e)}
+
 
 # Main Application
 def main():
     """Main streamlit application"""
 
     # Header
-    st.markdown("""
+    st.markdown(
+        """
     <div class="title-container">
         <h1> NYC Taxi Fare Predictor </h1>
         <p style="color: #666; font-size: 1.1rem;">
             Estimate your taxi fare before you ride
         </p>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # API health check
     api_status = check_api_status()
@@ -172,7 +178,8 @@ def main():
 
         The prediction service is not running. Please ensure:
         1. The FastAPI backend is running: `uvicorn src.serving.api:app --port 8000`
-        2. The model has been downloaded and cached: `python or python3 src/serving/download_model.py`
+        2. The model has been downloaded and cached:
+           `python or python3 src/serving/download_model.py`
         """)
         st.stop()
 
@@ -181,9 +188,9 @@ def main():
         st.header("Model Information")
         model_info = get_model_info()
         if model_info:
-            st.write(f"**Model Name:** {model_info.get("model_name", 'N/A')}")
-            st.write(f"**Version:** {model_info.get("model_version", 'N/A')}")
-            st.write(f"**Type:** {model_info.get("model_type", 'N/A')}")
+            st.write(f"**Model Name:** {model_info.get('model_name', 'N/A')}")
+            st.write(f"**Version:** {model_info.get('model_version', 'N/A')}")
+            st.write(f"**Type:** {model_info.get('model_type', 'N/A')}")
 
         st.markdown("---")
         st.markdown("""
@@ -232,7 +239,7 @@ def main():
             max_value=300.0,
             value=0.0,
             step=1.0,
-            help="Leave at 0 to auto-estimate from distance"
+            help="Leave at 0 to auto-estimate from distance",
         )
 
     # Combine date and time
@@ -241,7 +248,9 @@ def main():
     # Show estimated speed if duration provided
     if estimated_duration > 0:
         avg_speed = (trip_distance / estimated_duration) * 60
-        st.caption(f"Estimated Duration: {estimated_duration:.0f} min | Avg Speed: {avg_speed:.1f} mph")
+        st.caption(
+            f"Estimated Duration: {estimated_duration:.0f} min | Avg Speed: {avg_speed:.1f} mph"
+        )
     else:
         auto_duration = max(1.0, (trip_distance / 15.0) * 60)
         st.caption(f"Auto-estimated Duration: {auto_duration:.0f} min (based on ~15 mph avg)")
@@ -253,23 +262,14 @@ def main():
 
         with col1:
             passenger_count = st.number_input(
-                "Passengers",
-                min_value=1,
-                max_value=6,
-                value=1,
-                help="Number of passengers"
+                "Passengers", min_value=1, max_value=6, value=1, help="Number of passengers"
             )
 
             payment_type = st.selectbox(
                 "Payment Type",
-                options=[
-                    (1, "Credit Card"),
-                    (2, "Cash"),
-                    (3, "No Charge"),
-                    (4, "Dispute")
-                ],
+                options=[(1, "Credit Card"), (2, "Cash"), (3, "No Charge"), (4, "Dispute")],
                 format_func=lambda x: x[1],
-                help="How will you pay?"
+                help="How will you pay?",
             )
 
         with col2:
@@ -281,10 +281,10 @@ def main():
                     (3, "Newark"),
                     (4, "Nassau/Westchester"),
                     (5, "Negotiated"),
-                    (6, "Group")
+                    (6, "Group"),
                 ],
                 format_func=lambda x: x[1],
-                help="Rate code for the trip"
+                help="Rate code for the trip",
             )
 
             vendor = st.selectbox(
@@ -294,7 +294,7 @@ def main():
                     (2, "VeriFone"),
                 ],
                 format_func=lambda x: x[1],
-                help="Taxi vendor"
+                help="Taxi vendor",
             )
 
     st.markdown("---")
@@ -331,13 +331,16 @@ def main():
             predicted_fare = data["predicted_fare"]
 
             # Main result card
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div class="result-card">
                 <p>Estimated Fare</p>
                 <h1>${predicted_fare:.2f}</h1>
                 <p>Estimated Duration: {data["estimated_duration_minutes"]:.0f} minutes</p>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
 
             # Additional details
             col1, col2, col3 = st.columns(3)
@@ -356,30 +359,34 @@ def main():
             st.markdown("---")
             st.markdown("**💵 Suggested Tips**")
             tip_col1, tip_col2, tip_col3 = st.columns(3)
-            
+
             with tip_col1:
                 tip_15 = predicted_fare * 0.15
                 st.info(f"15%: ${tip_15:.2f}\n\nTotal: ${predicted_fare + tip_15:.2f}")
-            
+
             with tip_col2:
                 tip_20 = predicted_fare * 0.20
                 st.success(f"20%: ${tip_20:.2f}\n\nTotal: ${predicted_fare + tip_20:.2f}")
-            
+
             with tip_col3:
                 tip_25 = predicted_fare * 0.25
                 st.info(f"25%: ${tip_25:.2f}\n\nTotal: ${predicted_fare + tip_25:.2f}")
-                
+
         else:
             st.error(f"Prediction failed: {result['error']}")
-    
+
     # -------------------------------------------------------------------------
     # FOOTER
     # -------------------------------------------------------------------------
-    st.markdown("""
+    st.markdown(
+        """
     <div class="footer">
         <p>NYC Taxi Fare Prediction Project</p>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
+
 
 # Entry point
 if __name__ == "__main__":

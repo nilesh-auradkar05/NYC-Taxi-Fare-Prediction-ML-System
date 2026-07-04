@@ -7,14 +7,13 @@ Provides:
 - Drift analysis using Evidently
 """
 
-import time
 import threading
+import time
 from collections import deque
 from dataclasses import dataclass
 
 import numpy as np
-from prometheus_client import Counter, Histogram, Gauge, Info, generate_latest
-
+from prometheus_client import Counter, Gauge, Histogram, Info, generate_latest
 
 # PROMETHEUS METRICS
 
@@ -157,8 +156,8 @@ def generate_drift_report(
         Dict with drift results per feature and overall drift flag.
     """
     try:
-        from evidently.report import Report
         from evidently.metric_preset import DataDriftPreset
+        from evidently.report import Report
 
         report = Report(metrics=[DataDriftPreset()])
         report.run(reference_data=reference_df, current_data=current_df)

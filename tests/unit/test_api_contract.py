@@ -5,18 +5,18 @@ Tests the request/response schemas, defaults, and data conversion
 without requiring a running model or MLflow server.
 """
 
-import pytest
-import pandas as pd
-from datetime import datetime
-from pydantic import ValidationError
-
 import sys
+from datetime import datetime
 from pathlib import Path
+
+import pandas as pd
+import pytest
+from pydantic import ValidationError
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.serving.api import TripInput, PredictionResponse, trip_to_dataframe
+from src.serving.api import PredictionResponse, TripInput, trip_to_dataframe
 
 
 class TestTripInput:

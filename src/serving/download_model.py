@@ -1,8 +1,8 @@
 """
 Model Download Script for NYC Taxi Fare Prediction
 
-This script downloads ONNX model and preprocessing transformer from Mlflow registry and caches them locally
-for use by the FastAPI serving layer.
+This script downloads ONNX model and preprocessing transformer from Mlflow
+registry and caches them locally for use by the FastAPI serving layer.
 
 Usage:
 -------------
@@ -17,38 +17,40 @@ Usage:
 
 """
 
+import argparse
 import os
 import sys
-import argparse
 import tempfile
 from pathlib import Path
 
-from loguru import logger
 from dotenv import load_dotenv
+from loguru import logger
 
 load_dotenv()
+
 
 def validate_env():
     """
     Validate required environment variables are set(MLFLOW_TRACKING_URI).
-    
+
     Raises:
         EnvironmentError: If required variables are not set
     """
-    tracking_uri = os.getenv('MLFLOW_TRACKING_URI')
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
 
     if not tracking_uri:
         logger.error("MLFlow tracking URI is not set.")
         logger.error("Set it in your .env file or environment variables")
         logger.error("\tMLFLOW_TRACKING_URI=http://127.0.0.1:5000")
-        raise EnvironmentError("Missing MLFLOW_TRACKING_URI")
+        raise OSError("Missing MLFLOW_TRACKING_URI")
 
     logger.info(f"Mlflow tracking URI: {tracking_uri}")
 
+
 def download_model(
-    model_name: str="nyc-taxi-model",
-    model_version: str="latest",
-    output_dir: str="models/cache",
+    model_name: str = "nyc-taxi-model",
+    model_version: str = "latest",
+    output_dir: str = "models/cache",
 ) -> dict:
     """
     Download ONNX model and transformer from MLflow to local cache.
@@ -57,14 +59,14 @@ def download_model(
     -----------
     model_name : str
         Default: "nyc-taxi-model"
-    
+
     model_version : str
         Default: "latest"
-    
+
     output_dir : str
         Local directory to cache the model artifacts.
         Default: "models/cache"
-    
+
     Returns:
     --------
     dict
@@ -74,12 +76,12 @@ def download_model(
             "transformer_path": "/path/to/transformer.joblib",
             "metadata_path": metadata.json
         }
-    
+
     Raises:
     -------
     RuntimeError
         If model or transformer download fails
-    
+
     Example:
     --------
         >>> paths = download_model()
@@ -90,13 +92,13 @@ def download_model(
     import mlflow
     from mlflow.tracking import MlflowClient
 
-    logger.info("="*60)
+    logger.info("=" * 60)
     logger.info("ONNX Model download")
-    logger.info("="*60)
+    logger.info("=" * 60)
 
     logger.info("Configuring MLflow....")
 
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", 'http://127.0.0.1:5000')
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
     mlflow.set_tracking_uri(tracking_uri)
 
     # Create Output Directory
@@ -132,7 +134,7 @@ def download_model(
 
     logger.info("\n Downloading ONNX model....")
     try:
-        with tempfile.TemporaryDirectory() as  tmp_dir:
+        with tempfile.TemporaryDirectory() as tmp_dir:
             artifact_dir = client.download_artifacts(str(run_id), "onnx_model", tmp_dir)
             source_onnx = Path(artifact_dir) / "model.onnx"
 
@@ -143,13 +145,14 @@ def download_model(
                 else:
                     raise FileNotFoundError(
                         "No .onnx file found in artifacts. "
-                        f"Contents: {list(Path(artifact_dir).rglob("*.onnx"))}"
+                        f"Contents: {list(Path(artifact_dir).rglob('*.onnx'))}"
                     )
 
             model_path = output_path / "model.onnx"
             import shutil
+
             shutil.copy2(source_onnx, model_path)
-            logger.info(f"\tSaved: {model_path} ({model_path.stat().st_size/1024:.0f} KB)")
+            logger.info(f"\tSaved: {model_path} ({model_path.stat().st_size / 1024:.0f} KB)")
 
     except Exception as e:
         logger.error(f"Failed to download model: {e}")
@@ -158,14 +161,12 @@ def download_model(
     # Download Transformer
     logger.info(f"\nDownloading preprocessing transformer from run: {run_id}")
     try:
-        with tempfile.TemporaryDirectory() as  tmp_dir:
+        with tempfile.TemporaryDirectory() as tmp_dir:
             artifact_dir = client.download_artifacts(str(run_id), "preprocessing", str(tmp_dir))
             source_transformer = Path(artifact_dir) / "features.joblib"
 
             if not source_transformer.exists():
-                raise FileNotFoundError(
-                    f"Transformer not found at: {source_transformer}"
-                )
+                raise FileNotFoundError(f"Transformer not found at: {source_transformer}")
 
             transformer_path = output_path / "transformer.joblib"
             shutil.copy2(source_transformer, transformer_path)
@@ -213,6 +214,7 @@ def download_model(
         "model_name": model_name,
     }
 
+
 def main():
     """
     Main entry point for the model download script
@@ -228,19 +230,19 @@ def main():
     parser.add_argument(
         "--model-name",
         default="nyc-taxi-model",
-        help="Registered model name in MLflow (default: nyc-taxi-model)"
+        help="Registered model name in MLflow (default: nyc-taxi-model)",
     )
 
     parser.add_argument(
         "--model-version",
         default="latest",
-        help="Model version: 'latest' for model name in MLflow (default: latest)"
+        help="Model version: 'latest' for model name in MLflow (default: latest)",
     )
 
     parser.add_argument(
         "--output-dir",
         default="models/cache",
-        help="Local directory to cache model artifacts (default: models/cache)"
+        help="Local directory to cache model artifacts (default: models/cache)",
     )
 
     args = parser.parse_args()
@@ -263,6 +265,7 @@ def main():
     except Exception as e:
         logger.error(f"\n Download failed: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

@@ -9,10 +9,10 @@ Usage:
 ------
     # Run inference on default data
     uv run python3 src/pipelines/inference.py run
-    
+
     # Run inference with custom input file
     uv run python3 src/pipelines/inference.py run --input-data path/to/data.parquet
-    
+
     # Run inference with specific model version
     uv run python3 src/pipelines/inference.py run --model-version 3
 """
@@ -21,26 +21,25 @@ import os
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 import numpy as np
-import pandas as pd
-from metaflow import (  # type: ignore[attr-defined]
-    Parameter,      # For defining command-line parameters
-    card,           # For generating visual reports/cards
-    current,        # For accessing current run metadata (run_id, etc.)
-    environment,    # For injecting environment variables into steps
-    step,           # Decorator to define pipeline steps
-)
 import onnxruntime as ort
+import pandas as pd
+from dotenv import load_dotenv
+from metaflow import (  # type: ignore[attr-defined]
+    Parameter,  # For defining command-line parameters
+    card,  # For generating visual reports/cards
+    current,  # For accessing current run metadata (run_id, etc.)
+    environment,  # For injecting environment variables into steps
+    step,  # Decorator to define pipeline steps
+)
 
 file_path = Path(__file__).resolve()
 root_path = file_path.parent.parent
 if str(root_path) not in sys.path:
     sys.path.append(str(root_path))
 
-from src.common.pipeline import Pipeline  # noqa: E402
 from src.common.features import engineer_features  # noqa: E402
+from src.common.pipeline import Pipeline  # noqa: E402
 
 load_dotenv()
 
@@ -151,10 +150,11 @@ class Inference(Pipeline):
         """
         Connect to MLflow, download ONNX model and transformer artifacts.
         """
+        import tempfile
+
+        import joblib
         import mlflow
         from mlflow.tracking import MlflowClient
-        import joblib
-        import tempfile
 
         self.logger.info("=" * 60)
         self.logger.info("NYC TAXI FARE PREDICTION - INFERENCE PIPELINE")
@@ -184,7 +184,9 @@ class Inference(Pipeline):
                     raise RuntimeError(f"No versions found for model '{self.model_name}'")
                 version_info = sorted(versions, key=lambda v: int(v.version))[-1]
             else:
-                version_info = client.get_model_version(str(self.model_name), str(self.model_version))
+                version_info = client.get_model_version(
+                    str(self.model_name), str(self.model_version)
+                )
 
             version_number = version_info.version
             run_id = version_info.run_id
@@ -193,7 +195,7 @@ class Inference(Pipeline):
             raise RuntimeError(
                 f"Could not resolve model '{self.model_name}' version '{self.model_version}': {e}"
             ) from e
-            
+
         # Download the transformer artifact from the training run
         # The transformer was saved in the "preprocessing" artifact directory
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -213,7 +215,9 @@ class Inference(Pipeline):
             self.logger.info(f"ONNX model loaded (input: '{self.onnx_input_name}')")
 
             # Download Transformer
-            transformer_artifact = client.download_artifacts(str(run_id), "preprocessing", str(tmp_dir))
+            transformer_artifact = client.download_artifacts(
+                str(run_id), "preprocessing", str(tmp_dir)
+            )
             transformer_path = Path(transformer_artifact) / "features.joblib"
 
             if not transformer_path.exists():
@@ -228,21 +232,23 @@ class Inference(Pipeline):
             mlflow.set_experiment(
                 environment_variables.get("MLFLOW_EXPERIMENT_NAME", "inference"),
             )
-            
+
             run = mlflow.start_run(run_name=f"inference-{current.run_id}")
             self.mlflow_run_id = run.info.run_id
-            
+
             # Log inference parameters for traceability
-            mlflow.log_params({
-                "model_name": self.model_name,
-                "model_version": str(version_number),
-                "model_run_id": str(run_id),
-                "input_data": self.input_data,
-                "pipeline_type": "inference",
-            })
-            
+            mlflow.log_params(
+                {
+                    "model_name": self.model_name,
+                    "model_version": str(version_number),
+                    "model_run_id": str(run_id),
+                    "input_data": self.input_data,
+                    "pipeline_type": "inference",
+                }
+            )
+
             mlflow.end_run()
-            
+
             self.logger.info(f" Started MLflow inference run: {self.mlflow_run_id}")
 
         except Exception as e:
@@ -261,18 +267,18 @@ class Inference(Pipeline):
     def load_data(self):
         """
         Load and validate the input data for prediction.
-        
+
         This step reads the input parquet file and performs basic validation
         to ensure the data has the expected schema. It also logs data statistics
         for monitoring purposes.
-        
+
         Validation checks:
         ------------------
         1. File exists and is readable
         2. Required columns are present
         3. Data types are compatible
         4. No completely empty columns
-        
+
         The raw data is stored for later use in generating output with
         predictions appended to the original records.
         """
@@ -294,10 +300,10 @@ class Inference(Pipeline):
             self.raw_data = pd.read_parquet(str(self.input_data))
             self.n_records = len(self.raw_data)
             self.logger.info(f"Loaded {self.n_records:,} records")
-            
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Input file not found: {self.input_data}")
-            
+
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Input file not found: {self.input_data}") from e
+
         except Exception as e:
             raise RuntimeError(f"Failed to read input file: {self.input_data}") from e
 
@@ -324,7 +330,7 @@ class Inference(Pipeline):
 
         # Check for missing columns
         missing_columns = set(required_columns) - set(self.raw_data.columns)
-        
+
         if missing_columns:
             raise ValueError(f"Missing required columns: {missing_columns}")
 
@@ -337,8 +343,10 @@ class Inference(Pipeline):
         # These metrics help detect data drift (changes in input distribution)
         # which can indicate that the model may need retraining.
         # ---------------------------------------------------------------------
-        self.logger.info(f"Schema OK. Columns: {len(self.raw_data.columns)}, "
-                         f"Memory: {self.raw_data.memory_usage(deep=True).sum() / 1e6:.1f} MB")
+        self.logger.info(
+            f"Schema OK. Columns: {len(self.raw_data.columns)}, "
+            f"Memory: {self.raw_data.memory_usage(deep=True).sum() / 1e6:.1f} MB"
+        )
 
         # Store the number of records for later validation
         self.n_records = len(self.raw_data)
@@ -353,12 +361,12 @@ class Inference(Pipeline):
     def feature_engineering(self):
         """
         Create derived features from raw data - IDENTICAL to training pipeline.
-        
+
         This step applies the EXACT same feature transformations that were used
         during training. Consistency is critical - any difference in feature
         engineering between training and inference will cause training-serving
         skew, leading to degraded prediction quality.
-        
+
         Features Created:
         -----------------
         Temporal Features:
@@ -367,23 +375,23 @@ class Inference(Pipeline):
             - pickup_dayofweek: Day of week (0=Monday, 6=Sunday)
             - pickup_month: Month of pickup (1-12)
             - is_weekend: Binary flag for weekend trips
-        
+
         Cyclical Features (for preserving temporal continuity):
             - hour_sin, hour_cos: Sine/cosine encoding of hour
             - dayofweek_sin, dayofweek_cos: Sine/cosine encoding of day
-        
+
         Financial Features:
             - fare_per_mile: Fare amount divided by distance
             - revenue_per_mile: Total amount divided by distance
             - tip_percentage: Tip as percentage of total
-        
+
         Efficiency Features:
             - speed_mph: Average speed in miles per hour
-        
+
         Categorical Derived:
             - time_of_day: Categorized time period
             - vendor_payment_interaction: Combined vendor and payment type
-        
+
         IMPORTANT: This code must be kept in sync with training.py
         ---------  Any changes here must also be made in training pipeline!
         """
@@ -411,18 +419,18 @@ class Inference(Pipeline):
     def predict(self):
         """
         Generate predictions using the loaded model.
-        
+
         This step runs the XGBoost model on the transformed features to
         predict the total_amount for each taxi trip. The predictions are
         stored for the final output and logged to MLflow for monitoring.
-        
+
         Monitoring Metrics:
         -------------------
         - prediction_mean: Average predicted fare
         - prediction_std: Standard deviation of predictions
         - prediction_min/max: Range of predictions
         - n_predictions: Number of predictions made
-        
+
         These metrics help detect:
         - Data drift (distribution of predictions changes over time)
         - Model degradation (predictions become less accurate)
@@ -472,7 +480,9 @@ class Inference(Pipeline):
 
         self.logger.info("\nPrediction Statistics:")
         for key, value in self.prediction_stats.items():
-            self.logger.info(f"  {key}: {value:.4f}" if isinstance(value, float) else f"{key}: {value:,}")
+            self.logger.info(
+                f"  {key}: {value:.4f}" if isinstance(value, float) else f"{key}: {value:,}"
+            )
 
         # ---------------------------------------------------------------------
         # LOG TO MLFLOW
@@ -483,11 +493,11 @@ class Inference(Pipeline):
         if self.mlflow_run_id:
             try:
                 mlflow.set_tracking_uri(environment_variables["MLFLOW_TRACKING_URI"])
-                
+
                 with mlflow.start_run(run_id=self.mlflow_run_id):
                     mlflow.log_metrics(self.prediction_stats)
                     self.logger.info("Prediction metrics logged to MLflow")
-                    
+
             except Exception as e:
                 self.logger.warning(f"Could not log metrics to MLflow: {str(e)}")
 
@@ -500,16 +510,16 @@ class Inference(Pipeline):
     def end(self):
         """
         Save predictions and generate final summary.
-        
+
         This step combines the original input data with predictions and
         saves the result to a parquet file. It also generates a summary
         report of the inference run.
-        
+
         Output Format:
         --------------
         The output parquet file contains all original columns plus:
         - predicted_total_amount: The model's fare prediction
-        
+
         This allows easy comparison with actual fares if available,
         and preserves all metadata for downstream analysis.
         """
@@ -524,10 +534,10 @@ class Inference(Pipeline):
         # This preserves all input information for downstream analysis.
         # ---------------------------------------------------------------------
         self.logger.info("Combining predictions with original data...")
-        
+
         # Create output dataframe with original data
         output_df = self.raw_data.copy()
-        
+
         # Add predictions column
         output_df["predicted_total_amount"] = self.predictions
 
@@ -539,10 +549,10 @@ class Inference(Pipeline):
         # ---------------------------------------------------------------------
         output_path = Path(str(self.output_path))
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         self.logger.info(f"Saving predictions to: {output_path}")
         output_df.to_parquet(output_path, index=False)
-        
+
         self.logger.info(f"Saved {len(output_df):,} predictions")
 
         # ---------------------------------------------------------------------
@@ -560,15 +570,18 @@ class Inference(Pipeline):
         self.logger.info("")
         self.logger.info("Prediction Summary:")
         self.logger.info(f"  Mean predicted fare: ${self.prediction_stats['prediction_mean']:.2f}")
-        self.logger.info(f"  Median predicted fare: ${self.prediction_stats['prediction_median']:.2f}")
+        self.logger.info(
+            f"  Median predicted fare: ${self.prediction_stats['prediction_median']:.2f}"
+        )
         self.logger.info(f"  Min predicted fare: ${self.prediction_stats['prediction_min']:.2f}")
         self.logger.info(f"  Max predicted fare: ${self.prediction_stats['prediction_max']:.2f}")
         self.logger.info("=" * 60)
 
         # If MLflow run was created, print the link
         if self.mlflow_run_id:
-            self.logger.info(f"\nMLflow Run: {self.mlflow_tracking_uri}/#/experiments/runs/{self.mlflow_run_id}")
-
+            self.logger.info(
+                f"\nMLflow Run: {self.mlflow_tracking_uri}/#/experiments/runs/{self.mlflow_run_id}"
+            )
 
 
 # MAIN ENTRY POINT

@@ -27,6 +27,7 @@ def load_and_engineer_features(
     """Load raw parquet file and engineer features."""
 
     import pandas as pd
+
     from .features import engineer_features
 
     df = pd.read_parquet(dataset_path)
@@ -52,8 +53,8 @@ def transform_and_split_data(
 
     import joblib
     import pandas as pd
-    
-    from .features import build_transformer, TARGET_COLUMN
+
+    from .features import TARGET_COLUMN, build_transformer
 
     df = pd.read_parquet(engineered_data.path)
 
@@ -97,6 +98,7 @@ def cross_validate_fold(
     import joblib
     from sklearn.metrics import mean_squared_error, r2_score
     from sklearn.model_selection import KFold
+
     from .features import build_model
 
     X = joblib.load(x_train.path)
@@ -173,6 +175,7 @@ def train_final_model(
     import joblib
     import mlflow
     from sklearn.metrics import mean_squared_error, r2_score
+
     from .features import build_model
 
     test_mse = 0.0
@@ -242,6 +245,7 @@ def register_onnx_model(
 
     import joblib
     import mlflow
+
     from .features import convert_to_onnx
 
     model = joblib.load(trained_model.path)

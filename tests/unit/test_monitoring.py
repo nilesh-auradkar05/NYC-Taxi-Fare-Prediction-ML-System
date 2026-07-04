@@ -4,20 +4,20 @@ Tests for the monitoring module.
 Verifies Prometheus metrics, prediction tracking, and drift detection.
 """
 
-import time
-import pytest
-import numpy as np
-
 import sys
+import time
 from pathlib import Path
+
+import numpy as np
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.serving.monitoring import (
     PredictionRecord,
     PredictionTracker,
-    get_metrics_text,
     generate_drift_report,
+    get_metrics_text,
 )
 
 

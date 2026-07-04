@@ -5,20 +5,20 @@ Verifies that engineered features have real logic (not placeholders),
 imputation is intentional, and feature lists are consistent.
 """
 
-import pytest
-import numpy as np
-import pandas as pd
-
 import sys
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.common.features import (
-    engineer_features,
-    build_transformer,
-    NUMERICAL_FEATURES,
     CATEGORICAL_FEATURES,
+    NUMERICAL_FEATURES,
+    build_transformer,
+    engineer_features,
 )
 
 

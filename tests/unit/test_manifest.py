@@ -1,4 +1,4 @@
-from ingestion.lambdas.fetch_tlc_to_bronze import (
+from ingestion.lambdas.shared.tlc_manifest import (
     bronze_keys,
     build_tlc_url,
     should_skip_existing,

@@ -251,6 +251,7 @@ colab_run.ipynb
 predictions/
 processed_data/
 scripts/fix_mlflow_paths.py
+.codegraph
 .metaflow
 .pytest_cache
 .ruff_cache

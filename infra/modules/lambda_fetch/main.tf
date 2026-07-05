@@ -4,7 +4,7 @@ locals {
 
 data "archive_file" "fetch_lambda_zip" {
   type        = "zip"
-  source_file = "${path.root}/../ingestion/lambdas/fetch_tlc_to_bronze.py"
+  source_dir  = "${path.root}/../ingestion/lambdas"
   output_path = "${path.root}/build/fetch_tlc_to_bronze.zip"
 }
 

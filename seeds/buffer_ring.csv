@@ -1,0 +1,8 @@
+location_id,borough,zone,source,review_status,notes
+43,Manhattan,Central Park,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,northern boundary-adjacent; assert explicitly because south edge touches 59th/60th area
+140,Manhattan,Lenox Hill East,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,north/east boundary-adjacent; verify 60th Street handling
+141,Manhattan,Lenox Hill West,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,north boundary-adjacent; verify 60th Street handling
+142,Manhattan,Lincoln Square East,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,north/west boundary-adjacent; verify 60th Street handling
+143,Manhattan,Lincoln Square West,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,north/west boundary-adjacent; verify 60th Street and WSH handling
+237,Manhattan,Upper East Side South,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,north/east boundary-adjacent donor-exclusion zone
+239,Manhattan,Upper West Side South,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,north/west boundary-adjacent donor-exclusion zone

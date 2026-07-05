@@ -1,0 +1,39 @@
+location_id,borough,zone,source,review_status,notes
+4,Manhattan,Alphabet City,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+12,Manhattan,Battery Park,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+13,Manhattan,Battery Park City,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+45,Manhattan,Chinatown,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+48,Manhattan,Clinton East,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,west-side boundary-adjacent; verify against excluded WSH
+50,Manhattan,Clinton West,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,west-side boundary-adjacent; verify against excluded WSH
+68,Manhattan,East Chelsea,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+79,Manhattan,East Village,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+87,Manhattan,Financial District North,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+88,Manhattan,Financial District South,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+90,Manhattan,Flatiron,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+100,Manhattan,Garment District,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+107,Manhattan,Gramercy,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+113,Manhattan,Greenwich Village North,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+114,Manhattan,Greenwich Village South,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+125,Manhattan,Hudson Sq,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+137,Manhattan,Kips Bay,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+144,Manhattan,Little Italy/NoLiTa,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+148,Manhattan,Lower East Side,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+158,Manhattan,Meatpacking/West Village West,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,west-side boundary-adjacent; verify against excluded WSH
+161,Manhattan,Midtown Center,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+162,Manhattan,Midtown East,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+163,Manhattan,Midtown North,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,northern CRZ edge; verify 60th Street handling
+164,Manhattan,Midtown South,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+170,Manhattan,Murray Hill,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+186,Manhattan,Penn Station/Madison Sq West,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+209,Manhattan,Seaport,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+211,Manhattan,SoHo,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+224,Manhattan,Stuy Town/Peter Cooper Village,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,east-side edge; verify against excluded FDR
+229,Manhattan,Sutton Place/Turtle Bay North,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,northern/east-side CRZ edge; verify 60th Street and FDR handling
+230,Manhattan,Times Sq/Theatre District,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,northern CRZ edge; verify 60th Street handling
+231,Manhattan,TriBeCa/Civic Center,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+232,Manhattan,Two Bridges/Seward Park,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+233,Manhattan,UN/Turtle Bay South,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,east-side edge; verify against excluded FDR
+234,Manhattan,Union Sq,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+246,Manhattan,West Chelsea/Hudson Yards,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,west-side boundary-adjacent; verify against excluded WSH
+249,Manhattan,West Village,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street
+261,Manhattan,World Trade Center,MTA_CRZ_TLC_zone_overlay,draft_needs_human_review,clearly south of 60th Street

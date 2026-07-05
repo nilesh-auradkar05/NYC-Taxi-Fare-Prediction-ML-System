@@ -50,3 +50,29 @@ variable "tlc_source_base_url" {
   type        = string
   default     = "https://d37ci6vzurychx.cloudfront.net/trip-data"
 }
+
+variable "artifacts_bucket_name" {
+  description = "Existing T-004 artifacts bucket name used for Glue scripts and reference files."
+  type        = string
+}
+
+variable "bronze_bucket_name" {
+  description = "Existing T-004 bronze lakehouse bucket name."
+  type        = string
+}
+
+variable "silver_bucket_name" {
+  description = "Existing T-004 silver lakehouse bucket name."
+  type        = string
+}
+
+variable "silver_glue_database_name" {
+  description = "Existing T-004 Glue Catalog database name for silver tables."
+  type        = string
+}
+
+variable "glue_version" {
+  description = "AWS Glue version for the conform job."
+  type        = string
+  default     = "5.1"
+}

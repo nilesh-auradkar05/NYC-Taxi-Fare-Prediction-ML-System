@@ -36,4 +36,4 @@ tf-validate:
 	cd infra && terraform validate
 
 tf-plan:
-	cd infra && terraform plan -out=nyc-taxi.tfplan
+	cd infra && terraform plan -out=nyc-taxi-lambda.tfplan

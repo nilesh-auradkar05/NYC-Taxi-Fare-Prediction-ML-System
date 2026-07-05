@@ -1775,19 +1775,6 @@ wheels = [
 ]
 
 [[package]]
-name = "metaflow"
-version = "2.19.35"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "boto3" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/51/32/e3bf998972841e3a04ccd7d1657f8258010837eccfa3e8e2de8eb060172b/metaflow-2.19.35.tar.gz", hash = "sha256:f349575c595151ca3fceb0f747ce6b67d74baa4ca1b71bd3f54bb8f92afdcc5e", size = 1613788 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/19/50/a1d5c7e0c3cd73c6a08df3cb202be2843a914fa8708b5b5d5c68b0c58664/metaflow-2.19.35-py2.py3-none-any.whl", hash = "sha256:9b9261bd472aade2e45ddc41e0512190fbb0d7339c297f2d394dcd5be9e1caa3", size = 1810266 },
-]
-
-[[package]]
 name = "ml-dtypes"
 version = "0.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2194,12 +2181,13 @@ name = "nyc-taxi"
 version = "0.2.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "boto3" },
+    { name = "botocore" },
     { name = "evidently" },
     { name = "httpx" },
     { name = "joblib" },
     { name = "kfp" },
     { name = "loguru" },
-    { name = "metaflow" },
     { name = "mlflow" },
     { name = "mypy" },
     { name = "numpy" },
@@ -2222,12 +2210,13 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3", specifier = ">=1.43.40" },
+    { name = "botocore", specifier = ">=1.43.40" },
     { name = "evidently", specifier = ">=0.7.21" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "joblib", specifier = ">=1.5.3" },
     { name = "kfp", specifier = ">=2.16.0" },
     { name = "loguru", specifier = ">=0.7.3" },
-    { name = "metaflow", specifier = ">=2.19.22" },
     { name = "mlflow", specifier = ">=3.10.1" },
     { name = "mypy", specifier = ">=1.20.0" },
     { name = "numpy", specifier = ">=2.4.4" },

@@ -141,6 +141,20 @@ data "aws_iam_policy_document" "pipeline_permissions" {
     actions   = ["sns:Publish"]
     resources = [var.pipeline_alert_topic_arn]
   }
+
+  statement {
+    sid    = "ManifestTableReadWrite"
+    effect = "Allow"
+
+    actions = [
+      "dynamodb:DescribeTable",
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem"
+    ]
+
+    resources = [var.manifest_table_arn]
+  }
 }
 
 resource "aws_iam_policy" "pipeline_permissions" {

@@ -56,3 +56,8 @@ variable "glue_database_names" {
 variable "pipeline_alert_topic_arn" {
   type = string
 }
+
+variable "manifest_table_arn" {
+  description = "DynamoDB manifest table ARN."
+  type        = string
+}

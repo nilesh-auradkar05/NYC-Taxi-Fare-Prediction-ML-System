@@ -2,10 +2,9 @@ locals {
   name_prefix = "${var.project_name}-${var.environment}"
 
   common_tags = {
-    Project     = "NYC Mobility Data Decision Platform"
+    Project     = "NYC Yellow Taxi DataOps"
     Environment = var.environment
     ManagedBy   = "Terraform"
-    Ticket      = "T-004"
     Owner       = "Nilesh"
   }
 }
@@ -26,6 +25,12 @@ module "glue_catalog" {
     silver = "nyc_taxi_silver"
     gold   = "nyc_taxi_gold"
   }
+}
+
+module "manifest_table" {
+  source = "./modules/manifest_table"
+
+  name_prefix = local.name_prefix
 }
 
 module "sns" {
@@ -53,7 +58,37 @@ module "iam" {
   artifacts_bucket_name = module.s3_lakehouse.bucket_names["artifacts"]
 
   glue_database_names      = module.glue_catalog.database_names
+  manifest_table_arn       = module.manifest_table.table_arn
   pipeline_alert_topic_arn = module.sns.pipeline_alert_topic_arn
+}
+
+module "lambda_fetch" {
+  source = "./modules/lambda_fetch"
+
+  name_prefix         = local.name_prefix
+  pipeline_role_arn   = module.iam.pipeline_role_arn
+  bronze_bucket_name  = module.s3_lakehouse.bucket_names["bronze"]
+  manifest_table_name = module.manifest_table.table_name
+  lambda_runtime      = var.lambda_runtime
+  tlc_source_base_url = var.tlc_source_base_url
+}
+
+module "lambda_check_manifest" {
+  source = "./modules/lambda_check_manifest"
+
+  name_prefix         = local.name_prefix
+  pipeline_role_arn   = module.iam.pipeline_role_arn
+  manifest_table_name = module.manifest_table.table_name
+  lambda_runtime      = var.lambda_runtime
+  tlc_source_base_url = var.tlc_source_base_url
+}
+
+module "stepfunctions_skeleton" {
+  source = "./modules/stepfunctions_skeleton"
+
+  name_prefix               = local.name_prefix
+  check_manifest_lambda_arn = module.lambda_check_manifest.function_arn
+  fetch_lambda_arn          = module.lambda_fetch.function_arn
 }
 
 module "athena" {

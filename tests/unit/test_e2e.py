@@ -6,12 +6,14 @@ and exercises the full prediction pipeline through FastAPI's TestClient.
 No external services required (no MLflow, no MinIO).
 """
 
+import asyncio
 import json
 import os
 import sys
 import tempfile
 from pathlib import Path
 
+import httpx
 import joblib
 import numpy as np
 import pandas as pd
@@ -26,6 +28,28 @@ from src.common.features import (
     convert_to_onnx,
     engineer_features,
 )
+
+
+class SyncASGIClient:
+    def __init__(self, app):
+        self.app = app
+
+    def request(self, method, url, **kwargs):
+        async def send_request():
+            transport = httpx.ASGITransport(app=self.app)
+            async with httpx.AsyncClient(
+                transport=transport,
+                base_url="http://testserver",
+            ) as client:
+                return await client.request(method, url, **kwargs)
+
+        return asyncio.run(send_request())
+
+    def get(self, url, **kwargs):
+        return self.request("GET", url, **kwargs)
+
+    def post(self, url, **kwargs):
+        return self.request("POST", url, **kwargs)
 
 
 def _make_training_data(n=200):
@@ -113,14 +137,11 @@ def client(model_cache_dir):
     # Force re-import to pick up the new env var
     import importlib
 
-    from fastapi.testclient import TestClient
-
     import src.serving.api as api_module
 
     importlib.reload(api_module)
-
-    with TestClient(api_module.app) as c:
-        yield c
+    api_module.load_model_artifacts(api_module.app, model_cache_dir)
+    yield SyncASGIClient(api_module.app)
 
 
 class TestE2EPredict:

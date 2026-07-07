@@ -20,6 +20,34 @@ resource "aws_iam_role" "stepfunctions_role" {
   assume_role_policy = data.aws_iam_policy_document.assume_stepfunctions.json
 }
 
+resource "aws_iam_role_policy" "sfn_glue_dq_sns" {
+  name = "${var.name_prefix}-sfn-glue-dq-sns"
+  role = aws_iam_role.stepfunctions_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "glue:StartJobRun",
+          "glue:GetJobRun",
+          "glue:GetJobRuns",
+          "glue:BatchStopJobRun"
+        ]
+        Resource = ["arn:aws:glue:us-east-1:${var.account_id}:job/nyc-taxi-prediction-dataops-dev-*"]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sns:Publish"
+        ]
+        Resource = var.alert_topic_arn
+      }
+    ]
+  })
+}
+
 data "aws_iam_policy_document" "stepfunctions_policy" {
   statement {
     sid    = "InvokePipelineLambdas"
@@ -54,74 +82,11 @@ resource "aws_sfn_state_machine" "monthly_ingestion" {
   role_arn = aws_iam_role.stepfunctions_role.arn
   type     = "STANDARD"
 
-  definition = jsonencode({
-    Comment = "T-006 skeleton: CheckManifest -> Choice(new?) -> FetchToBronze -> Succeed"
-    StartAt = "CheckManifest"
-
-    States = {
-      CheckManifest = {
-        Type     = "Task"
-        Resource = "arn:aws:states:::lambda:invoke"
-        Parameters = {
-          FunctionName = var.check_manifest_lambda_arn
-          "Payload.$"  = "$"
-        }
-        OutputPath = "$.Payload"
-        Retry = [
-          {
-            ErrorEquals = [
-              "Lambda.ServiceException",
-              "Lambda.AWSLambdaException",
-              "Lambda.SdkClientException",
-              "States.TaskFailed"
-            ]
-            IntervalSeconds = 2
-            MaxAttempts     = 3
-            BackoffRate     = 2.0
-          }
-        ]
-        Next = "IsNewFile"
-      }
-
-      IsNewFile = {
-        Type = "Choice"
-        Choices = [
-          {
-            Variable      = "$.is_new"
-            BooleanEquals = true
-            Next          = "FetchToBronze"
-          }
-        ]
-        Default = "AlreadyFetched"
-      }
-
-      AlreadyFetched = {
-        Type = "Succeed"
-      }
-
-      FetchToBronze = {
-        Type     = "Task"
-        Resource = "arn:aws:states:::lambda:invoke"
-        Parameters = {
-          FunctionName = var.fetch_lambda_arn
-          "Payload.$"  = "$"
-        }
-        OutputPath = "$.Payload"
-        Retry = [
-          {
-            ErrorEquals = [
-              "Lambda.ServiceException",
-              "Lambda.AWSLambdaException",
-              "Lambda.SdkClientException",
-              "States.TaskFailed"
-            ]
-            IntervalSeconds = 2
-            MaxAttempts     = 3
-            BackoffRate     = 2.0
-          }
-        ]
-        End = true
-      }
-    }
+  definition = templatefile("${path.module}/step_functions/ingestion.asl.json.tftpl", {
+    check_manifest_lambda_arn  = var.check_manifest_lambda_arn
+    fetch_to_bronze_lambda_arn = var.fetch_lambda_arn
+    conform_job_name           = var.conform_job_name
+    dq_gate_job_name           = var.dq_gate_job_name
+    alert_topic_arn            = var.alert_topic_arn
   })
 }

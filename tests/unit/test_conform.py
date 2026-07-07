@@ -107,3 +107,27 @@ def test_u04_malformed_fare_and_distance_go_to_quarantine_with_reason(spark: Spa
 def test_merge_identifier_quoting():
     assert _quote_identifier("trip_id") == "`trip_id`"
     assert _quote_identifier("source_file") == "`source_file`"
+
+def test_u04_domain_invalid_fare_distance_duration_go_to_quarantine(spark, zones):
+    raw = spark.createDataFrame(
+        [
+            yellow_row(fare_amount="-1.00"),
+            yellow_row(fare_amount="1000.01"),
+            yellow_row(trip_distance="0.00"),
+            yellow_row(trip_distance="200.01"),
+            yellow_row(
+                tpep_pickup_datetime="2024-01-15 10:00:00",
+                tpep_dropoff_datetime="2024-01-15 16:00:01",
+            ),
+        ]
+    )
+
+    valid, quarantine = conform_trips(raw, zones, service="yellow", year_month="2024-01")
+
+    assert valid.count() == 0
+
+    reasons = [row.reason_code for row in quarantine.select("reason_code").collect()]
+
+    assert any("BAD_FARE" in reason for reason in reasons)
+    assert any("BAD_DISTANCE" in reason for reason in reasons)
+    assert any("BAD_DURATION" in reason for reason in reasons)

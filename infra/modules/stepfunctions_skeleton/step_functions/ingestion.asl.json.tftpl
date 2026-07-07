@@ -1,0 +1,97 @@
+{
+  "Comment": "NYC Mobility monthly ingestion: manifest -> bronze -> conform -> DQ gate",
+  "StartAt": "CheckManifest",
+  "States": {
+    "CheckManifest": {
+      "Type": "Task",
+      "Resource": "${check_manifest_lambda_arn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Next": "HasNewFile"
+    },
+    "HasNewFile": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.is_new",
+          "BooleanEquals": true,
+          "Next": "FetchToBronze"
+        }
+      ],
+      "Default": "NoNewFile"
+    },
+    "NoNewFile": {
+      "Type": "Succeed"
+    },
+    "FetchToBronze": {
+      "Type": "Task",
+      "Resource": "${fetch_to_bronze_lambda_arn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Next": "GlueConform"
+    },
+    "GlueConform": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${conform_job_name}",
+        "Arguments": {
+          "--service.$": "$.service",
+          "--year_month.$": "$.year_month"
+        }
+      },
+      "ResultPath": "$.glue_conform",
+      "Next": "DQGate"
+    },
+    "DQGate": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${dq_gate_job_name}",
+        "Arguments": {
+          "--service.$": "$.service",
+          "--year_month.$": "$.year_month"
+        }
+      },
+      "ResultPath": "$.dq_gate",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.dq_error",
+          "Next": "NotifyDQFailure"
+        }
+      ],
+      "Next": "Done"
+    },
+    "NotifyDQFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${alert_topic_arn}",
+        "Subject": "NYC Mobility DQ gate failed",
+        "Message.$": "States.JsonToString($)"
+      },
+      "Next": "DQFailed"
+    },
+    "DQFailed": {
+      "Type": "Fail",
+      "Error": "DataQualityGateFailed",
+      "Cause": "Glue Data Quality gate failed; SNS alert published."
+    },
+    "Done": {
+      "Type": "Succeed"
+    }
+  }
+}

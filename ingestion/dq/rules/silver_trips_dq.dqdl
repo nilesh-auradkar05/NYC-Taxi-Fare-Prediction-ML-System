@@ -1,0 +1,34 @@
+DefaultLabels=["layer"="silver", "table"="trips"]
+
+Rules = [
+    # DQ-01 monthly row count within ±40% of trailing-3-month mean
+    ColumnValues "dq_01_row_count_within_trailing_3_band" = 1 labels=["dq_id"="DQ-01", "severity"="critical"],
+
+    # DQ-02 null rate on {pickup_ts, PU zone, fare} < 0.5%
+    ColumnValues "dq_02_required_null_rates_ok" = 1 labels=["dq_id"="DQ-02", "severity"="critical"],
+
+    # DQ-03 domain: fare in (0,1000], distance in (0,200], duration in (0,6h]
+    ColumnValues "dq_03_domain_values_ok" = 1 labels=["dq_id"="DQ-03", "severity"="critical"],
+
+    # DQ-04 timestamp sanity: pickup < dropoff; pickup month matches file partition
+    ColumnValues "dq_04_timestamp_sanity_ok" = 1 labels=["dq_id"="DQ-04", "severity"="critical"],
+
+    # DQ-05 duplicate key rate < 0.01% post-dedupe
+    ColumnValues "dq_05_duplicate_key_rate_ok" = 1 labels=["dq_id"="DQ-05", "severity"="critical"],
+
+    # DQ-06 cbd_congestion_fee = 0 for all pre-2025 partitions
+    ColumnValues "dq_06_pre_2025_cbd_fee_zero_ok" = 1 labels=["dq_id"="DQ-06", "severity"="critical"],
+
+    # DQ-07 post-2025 fee in {0, expected service amount}; CRZ positive-fee rate plausible
+    ColumnValues "dq_07_post_2025_cbd_fee_plausibility_ok" = 1 labels=["dq_id"="DQ-07", "severity"="critical"]
+]
+
+Analyzers = [
+    RowCount,
+    ColumnValues "current_row_count",
+    ColumnValues "duplicate_key_rate",
+    ColumnValues "pickup_ts_null_rate",
+    ColumnValues "pu_zone_id_null_rate",
+    ColumnValues "fare_amount_null_rate",
+    ColumnValues "crz_positive_fee_rate"
+]

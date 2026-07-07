@@ -51,6 +51,66 @@ resource "aws_iam_role" "pipeline_execution" {
   assume_role_policy = data.aws_iam_policy_document.pipeline_assume_role.json
 }
 
+resource "aws_iam_role_policy" "pipeline_glue_dq_cloudwatch_metrics" {
+  name = "${var.name_prefix}-pipeline-glue-dq-cloudwatch-metrics"
+  role = aws_iam_role.pipeline_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AllowGlueDQCloudWatchMetrics"
+        Effect   = "Allow"
+        Action   = "cloudwatch:PutMetricData"
+        Resource = "*"
+        Condition = {
+          StringLike = {
+            "cloudwatch:namespace" = [
+              "Glue*",
+              "AWS/Glue*"
+            ]
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "pipeline_glue_dq_runtime" {
+  name = "${var.name_prefix}-pipeline-glue-dq-runtime"
+  role = aws_iam_role.pipeline_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowGlueDataQualityRuntime"
+        Effect = "Allow"
+        Action = [
+          "glue:PublishDataQuality",
+          "glue:GetDataQualityResult",
+          "glue:PutDataQualityStatisticAnnotation",
+          "glue:PutDataQualityProfileAnnotation"
+        ]
+        Resource = [
+          "arn:aws:glue:${var.aws_region}:${var.account_id}:dataQualityRuleset/*"
+        ]
+      },
+      {
+        Sid      = "AllowGlueDQCloudWatchMetrics"
+        Effect   = "Allow"
+        Action   = "cloudwatch:PutMetricData"
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "cloudwatch:namespace" = "Glue Data Quality"
+          }
+        }
+      }
+    ]
+  })
+}
+
 data "aws_iam_policy_document" "pipeline_permissions" {
   statement {
     sid     = "LakehouseBucketList"

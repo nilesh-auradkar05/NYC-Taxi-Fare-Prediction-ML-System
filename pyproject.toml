@@ -12,6 +12,7 @@ dependencies = [
     "boto3>=1.43.40",
     "botocore>=1.43.40",
     "evidently>=0.7.21",
+    "glue-utils>=0.12.0",
     "httpx>=0.28.1",
     "joblib>=1.5.3",
     "kfp>=2.16.0",
@@ -43,7 +44,7 @@ dependencies = [
 package = false
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
@@ -52,7 +53,7 @@ ignore = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = [".", "ingestion/lambdas"]
 addopts = "-q"
 markers = [
   "integration: tests that hit real AWS/dev resources",

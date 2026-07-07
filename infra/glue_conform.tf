@@ -10,7 +10,7 @@ resource "aws_s3_object" "glue_conform_script" {
 }
 
 resource "aws_glue_job" "conform_trips" {
-  name              = "${var.project_name}-conform-trips"
+  name              = "${var.project_name}-dev-conform-trips"
   role_arn          = module.iam.pipeline_role_arn
   glue_version      = var.glue_version
   worker_type       = "G.1X"

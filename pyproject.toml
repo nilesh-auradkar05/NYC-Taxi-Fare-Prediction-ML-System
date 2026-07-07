@@ -12,6 +12,7 @@ dependencies = [
     "boto3>=1.43.40",
     "botocore>=1.43.40",
     "evidently>=0.7.21",
+    "glue-utils>=0.12.0",
     "httpx>=0.28.1",
     "joblib>=1.5.3",
     "kfp>=2.16.0",

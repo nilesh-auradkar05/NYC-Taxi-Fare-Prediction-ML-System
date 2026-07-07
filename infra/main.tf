@@ -87,8 +87,12 @@ module "stepfunctions_skeleton" {
   source = "./modules/stepfunctions_skeleton"
 
   name_prefix               = local.name_prefix
+  account_id                = data.aws_caller_identity.current.account_id
   check_manifest_lambda_arn = module.lambda_check_manifest.function_arn
   fetch_lambda_arn          = module.lambda_fetch.function_arn
+  conform_job_name          = "${local.name_prefix}-conform-trips"
+  dq_gate_job_name          = "${local.name_prefix}-dq-gate-silver-trips"
+  alert_topic_arn           = module.sns.pipeline_alert_topic_arn
 }
 
 module "athena" {

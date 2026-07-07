@@ -947,6 +947,15 @@ wheels = [
 ]
 
 [[package]]
+name = "glue-utils"
+version = "0.12.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/9b/cf6d24d5b5953184571d4e51fac3f0825fd1faeaeff1fe4e2ebd86e3ca15/glue_utils-0.12.0.tar.gz", hash = "sha256:008ba31422adbe893d3eb84a62fe8fc74852c2815827d86b261378ce990ae1e2", size = 23446 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/95/35bf5c6fdd5e30636e3487a2a74b313b78bedf28d8dbbb658650e6b11c4e/glue_utils-0.12.0-py3-none-any.whl", hash = "sha256:b61c99397519627506c13dcff04e67ac1190e8825d3304884f32b693419c0d90", size = 22827 },
+]
+
+[[package]]
 name = "google-api-core"
 version = "2.31.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2184,6 +2193,7 @@ dependencies = [
     { name = "boto3" },
     { name = "botocore" },
     { name = "evidently" },
+    { name = "glue-utils" },
     { name = "httpx" },
     { name = "joblib" },
     { name = "kfp" },
@@ -2214,6 +2224,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.43.40" },
     { name = "botocore", specifier = ">=1.43.40" },
     { name = "evidently", specifier = ">=0.7.21" },
+    { name = "glue-utils", specifier = ">=0.12.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "joblib", specifier = ">=1.5.3" },
     { name = "kfp", specifier = ">=2.16.0" },

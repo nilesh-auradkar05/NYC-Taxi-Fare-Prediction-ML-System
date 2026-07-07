@@ -291,13 +291,40 @@ def join_zones(trips_df: DataFrame, zone_df: DataFrame) -> DataFrame:
 def classify_records(joined_df: DataFrame) -> DataFrame:
     reason_exprs = [
         F.when(F.col("pickup_ts").isNull(), F.lit("BAD_PICKUP_TS")),
+
         F.when(F.col("dropoff_ts").isNull(), F.lit("BAD_DROPOFF_TS")),
-        F.when((F.col("duration_s").isNull()) | (F.col("duration_s") <= 0), F.lit("BAD_DURATION")),
-        F.when((F.col("trip_distance").isNull()) | (F.col("trip_distance") <= 0),
-               F.lit("BAD_DISTANCE")),
-        F.when(F.col("fare_amount").isNull(), F.lit("BAD_FARE")),
-        F.when((F.col("pu_zone_id").isNull()) | F.col("pu_borough").isNull(), F.lit("BAD_PU_ZONE")),
-        F.when((F.col("do_zone_id").isNull()) | F.col("do_borough").isNull(), F.lit("BAD_DO_ZONE")),
+
+        F.when(
+            (F.col("duration_s").isNull())
+            | (F.col("duration_s") <= 0)
+            | (F.col("duration_s") > 21600),
+            F.lit("BAD_DURATION"),
+        ),
+
+        F.when(
+            (F.col("trip_distance").isNull())
+            | (F.col("trip_distance") <= 0)
+            | (F.col("trip_distance") > 200),
+            F.lit("BAD_DISTANCE"),
+        ),
+
+        F.when(
+            (F.col("fare_amount").isNull())
+            | (F.col("fare_amount") <= 0)
+            | (F.col("fare_amount") > 1000),
+            F.lit("BAD_FARE"),
+        ),
+
+        F.when(
+            (F.col("pu_zone_id").isNull()) | F.col("pu_borough").isNull(),
+            F.lit("BAD_PU_ZONE"),
+        ),
+
+        F.when(
+            (F.col("do_zone_id").isNull()) | F.col("do_borough").isNull(),
+            F.lit("BAD_DO_ZONE"),
+        ),
+
         F.when(
             F.date_format(F.col("pickup_ts"), "yyyy-MM") != F.col("year_month"),
             F.lit("MONTH_MISMATCH"),

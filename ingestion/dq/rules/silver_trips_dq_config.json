@@ -1,0 +1,47 @@
+{
+  "dq_01": {
+    "description": "Monthly row count within ±40% of trailing-3-month mean",
+    "trailing_months": 3,
+    "band_pct": 0.40,
+    "min_prior_months": 3,
+    "allow_insufficient_history": false
+  },
+  "dq_02": {
+    "description": "Null rate on pickup_ts, pu_zone_id, fare_amount < 0.5%",
+    "max_null_rate": 0.005
+  },
+  "dq_03": {
+    "description": "Domain: fare in (0,1000], distance in (0,200], duration in (0,21600]",
+    "fare_min_exclusive": 0.0,
+    "fare_max_inclusive": 1000.0,
+    "distance_min_exclusive": 0.0,
+    "distance_max_inclusive": 200.0,
+    "duration_s_min_exclusive": 0,
+    "duration_s_max_inclusive": 21600
+  },
+  "dq_04": {
+    "description": "pickup_ts < dropoff_ts and pickup month matches file partition"
+  },
+  "dq_05": {
+    "description": "Duplicate trip_id rate < 0.01% post-dedupe",
+    "max_duplicate_rate": 0.0001
+  },
+  "dq_06": {
+    "description": "cbd_congestion_fee = 0 for all pre-2025 partitions",
+    "pre_2025_cutoff_year_month": "2025-01",
+    "fee_zero_tolerance": 0.0001
+  },
+  "dq_07": {
+    "description": "Post-2025 cbd_congestion_fee values are service-specific and CRZ fee-positive rate is plausible",
+    "post_2025_start_year_month": "2025-01",
+    "fee_amount_tolerance": 0.0001,
+    "expected_fee_amounts": {
+      "yellow": 0.75,
+      "hvfhv": 1.50
+    },
+    "allowed_zero_fee": true,
+    "min_crz_rows_for_rate_check": 100,
+    "crz_positive_fee_rate_min": 0.01,
+    "crz_positive_fee_rate_max": 0.99
+  }
+}

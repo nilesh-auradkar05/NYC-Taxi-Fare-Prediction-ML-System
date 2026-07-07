@@ -6,6 +6,7 @@ imputation is intentional, and feature lists are consistent.
 """
 
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
@@ -29,9 +30,9 @@ def _make_sample_df(n=100):
     base = pd.Timestamp("2025-01-01")
 
     df = pd.DataFrame({
-        "tpep_pickup_datetime": [base + pd.Timedelta(hours=int(h)) for h in hours],
+        "tpep_pickup_datetime": [base + timedelta(hours=int(h)) for h in hours],
         "tpep_dropoff_datetime": [
-            base + pd.Timedelta(hours=int(h), minutes=int(rng.integers(5, 60)))
+            base + timedelta(hours=int(h), minutes=int(rng.integers(5, 60)))
             for h in hours
         ],
         "trip_distance": rng.uniform(0.5, 20.0, size=n),
@@ -93,8 +94,8 @@ class TestFeatureEngineering:
         rows = []
         for h in range(24):
             rows.append({
-                "tpep_pickup_datetime": base + pd.Timedelta(hours=h),
-                "tpep_dropoff_datetime": base + pd.Timedelta(hours=h, minutes=20),
+                "tpep_pickup_datetime": base + timedelta(hours=h),
+                "tpep_dropoff_datetime": base + timedelta(hours=h, minutes=20),
                 "trip_distance": 5.0, "passenger_count": 1,
                 "fare_amount": 15.0, "tip_amount": 3.0, "tolls_amount": 0,
                 "VendorID": 1, "payment_type": 1, "RatecodeID": 1,

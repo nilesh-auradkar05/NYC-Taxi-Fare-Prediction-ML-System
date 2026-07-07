@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 
 import httpx
@@ -64,10 +65,10 @@ def _make_training_data(n=200):
     df = pd.DataFrame(
         {
             "tpep_pickup_datetime": [
-                base + pd.Timedelta(hours=int(rng.integers(0, 720))) for _ in range(n)
+                base + timedelta(hours=int(rng.integers(0, 720))) for _ in range(n)
             ],
             "tpep_dropoff_datetime": [
-                base + pd.Timedelta(hours=int(rng.integers(0, 720)), minutes=int(d))
+                base + timedelta(hours=int(rng.integers(0, 720)), minutes=int(d))
                 for d in durations
             ],
             "trip_distance": distances,

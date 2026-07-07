@@ -59,6 +59,14 @@ markers = [
   "integration: tests that hit real AWS/dev resources",
   "spark: tests requiring local Spark",
 ]
+filterwarnings = [
+  # Third-party libs not yet updated for NumPy 2.5 / litestar 3.0.
+  # Remove each line once the upstream package ships a fix.
+  "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning:joblib",
+  "ignore:numpy.core is deprecated:DeprecationWarning",
+  "ignore:Call to deprecated function 'Dependency':DeprecationWarning",
+  "ignore:Use of deprecated class 'DependencyKwarg':DeprecationWarning",
+]
 
 [tool.mypy]
 python_version = "3.12"

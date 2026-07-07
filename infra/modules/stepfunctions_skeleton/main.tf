@@ -33,9 +33,11 @@ resource "aws_iam_role_policy" "sfn_glue_dq_sns" {
           "glue:StartJobRun",
           "glue:GetJobRun",
           "glue:GetJobRuns",
-          "glue:BatchStopJobRun"
+          "glue:BatchStopJobRun",
         ]
-        Resource = ["arn:aws:glue:us-east-1:${var.account_id}:job/nyc-taxi-prediction-dataops-dev-*"]
+        Resource = [
+          "arn:aws:glue:us-east-1:${var.account_id}:job/nyc-taxi-prediction-dataops-dev-*"
+        ]
       },
       {
         Effect = "Allow"
@@ -43,6 +45,13 @@ resource "aws_iam_role_policy" "sfn_glue_dq_sns" {
           "sns:Publish"
         ]
         Resource = var.alert_topic_arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "events:PutEvents"
+        ]
+        Resource = "arn:aws:events:us-east-1:${var.account_id}:event-bus/default"
       }
     ]
   })
@@ -89,4 +98,63 @@ resource "aws_sfn_state_machine" "monthly_ingestion" {
     dq_gate_job_name           = var.dq_gate_job_name
     alert_topic_arn            = var.alert_topic_arn
   })
+}
+
+data "aws_iam_policy_document" "assume_scheduler" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["scheduler.amazonaws.com"]
+    }
+
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+resource "aws_iam_role" "scheduler_start_sfn" {
+  name               = "${var.name_prefix}-scheduler-start-sfn"
+  assume_role_policy = data.aws_iam_policy_document.assume_scheduler.json
+}
+
+resource "aws_iam_role_policy" "scheduler_start_sfn" {
+  name = "${var.name_prefix}-scheduler-start-sfn"
+  role = aws_iam_role.scheduler_start_sfn.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "states:StartExecution"
+        ]
+        Resource = aws_sfn_state_machine.monthly_ingestion.arn
+      }
+    ]
+  })
+}
+
+resource "aws_scheduler_schedule" "monthly_ingestion" {
+  name                         = "${var.name_prefix}-monthly-ingestion"
+  description                  = "Monthly NYC Mobility ingestion Step Functions trigger."
+  schedule_expression          = var.monthly_schedule_expression
+  schedule_expression_timezone = var.monthly_schedule_timezone
+  state                        = var.enable_monthly_schedule ? "ENABLED" : "DISABLED"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_sfn_state_machine.monthly_ingestion.arn
+    role_arn = aws_iam_role.scheduler_start_sfn.arn
+
+    input = jsonencode({
+      service    = var.scheduled_service
+      year_month = var.scheduled_year_month
+      trigger    = "scheduled"
+    })
+  }
 }

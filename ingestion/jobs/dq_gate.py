@@ -12,7 +12,6 @@ from typing import Any
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-
 YEAR_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SUPPORTED_SERVICES = {"yellow", "hvfhv"}

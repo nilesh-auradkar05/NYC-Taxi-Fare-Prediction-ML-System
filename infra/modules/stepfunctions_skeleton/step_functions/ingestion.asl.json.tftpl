@@ -1,5 +1,5 @@
 {
-  "Comment": "NYC Mobility monthly ingestion: manifest -> bronze -> conform -> DQ gate",
+  "Comment": "NYC Taxi Prediction monthly ingestion: manifest -> bronze -> conform -> DQ gate",
   "StartAt": "CheckManifest",
   "States": {
     "CheckManifest": {
@@ -73,6 +73,27 @@
           "Next": "NotifyDQFailure"
         }
       ],
+      "Next": "EmitSilverUpdatedEvent"
+    },
+    "EmitSilverUpdatedEvent": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::events:putEvents",
+      "Parameters": {
+        "Entries": [
+          {
+            "Source": "nyc-mobility.pipeline",
+            "DetailType": "silver-updated",
+            "EventBusName": "default",
+            "Detail": {
+              "service.$": "$.service",
+              "year_month.$": "$.year_month",
+              "month.$": "$.year_month",
+              "pipeline_run_id.$": "$$.Execution.Id"
+            }
+          }
+        ]
+      },
+      "ResultPath": "$.emit_event",
       "Next": "Done"
     },
     "NotifyDQFailure": {

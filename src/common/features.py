@@ -147,8 +147,10 @@ def engineer_features(df: pd.DataFrame, target_column: str | None = None) -> pd.
     # # Intentional imputation: computed ratios
     ratio_cols = ["fare_per_mile", "tip_percentage", "speed_mph"]
     for col in ratio_cols:
-        median_val = df[col].median()
-        df[col] = df[col].fillna(median_val)
+        # All-NaN column (e.g. single pre-trip row with zero financials):
+        # median would be NaN anyway; skip so fillna(0) below handles it.
+        if df[col].notna().any():
+            df[col] = df[col].fillna(df[col].median())
 
     # Remaining NaNs (e.g. passenger_count) - fill with 0 only for non-ratio columns
     df.fillna(0, inplace=True)

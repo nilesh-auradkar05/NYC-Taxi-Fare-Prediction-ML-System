@@ -8,7 +8,6 @@ from pyspark.sql import SparkSession
 
 from ingestion.jobs.dq_gate import build_dq_metrics
 
-
 DQ_RULES_PATH = Path("ingestion/dq/rules/silver_trips_dq.dqdl")
 DQ_CONFIG_PATH = Path("ingestion/dq/rules/silver_trips_dq_config.json")
 

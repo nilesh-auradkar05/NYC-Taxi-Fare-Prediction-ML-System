@@ -187,7 +187,7 @@ def trip_to_dataframe(trip: TripInput) -> pd.DataFrame:
         avg_speed_mph = 15.0  # typical NYC average
         duration_min = max(1.0, (trip.trip_distance / avg_speed_mph) * 60)
 
-    dropoff_dt = pickup_dt + pd.Timedelta(minutes=duration_min)
+    dropoff_dt = pickup_dt + pd.Timedelta(duration_min, "min")
 
     return pd.DataFrame(
         [

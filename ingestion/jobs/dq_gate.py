@@ -15,6 +15,7 @@ from pyspark.sql import functions as F
 YEAR_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SUPPORTED_SERVICES = {"yellow", "hvfhv"}
+PLATFORM_START_YEAR_MONTH = "2023-01"
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,6 @@ class DQRunConfig:
     dq_config_path: str
     crz_zones_path: str
     dq_results_s3_prefix: str
-    allow_insufficient_history: bool = False
 
 
 def validate_year_month(year_month: str) -> str:
@@ -60,6 +60,20 @@ def previous_months(year_month: str, n: int) -> list[str]:
     return result
 
 
+def month_ordinal(year_month: str) -> int:
+    validate_year_month(year_month)
+    year = int(year_month[:4])
+    month = int(year_month[5:7])
+    return year * 12 + month - 1
+
+
+def is_dq01_bootstrap_month(year_month: str, bootstrap_months: int) -> bool:
+    if bootstrap_months < 0:
+        raise ValueError("bootstrap_months must be non-negative")
+    offset = month_ordinal(year_month) - month_ordinal(PLATFORM_START_YEAR_MONTH)
+    return 0 <= offset < bootstrap_months
+
+
 def read_text(path: str) -> str:
     if path.startswith("s3://"):
         import boto3
@@ -74,14 +88,6 @@ def read_text(path: str) -> str:
 
 def read_json(path: str) -> dict[str, Any]:
     return json.loads(read_text(path))
-
-
-def parse_bool(value: str | bool | None) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return False
-    return value.strip().lower() in {"1", "true", "t", "yes", "y"}
 
 
 def load_crz_zone_ids(spark: SparkSession, crz_zones_path: str) -> set[int]:
@@ -140,7 +146,6 @@ def build_dq_metrics(
     year_month: str,
     config: dict[str, Any],
     crz_zone_ids: set[int],
-    allow_insufficient_history_override: bool = False,
 ) -> DataFrame:
     validate_year_month(year_month)
     current_df = current_df.cache()
@@ -148,29 +153,56 @@ def build_dq_metrics(
 
     current_row_count = int(current_df.count())
 
-    prior_counts = {
+    dq01_cfg = config["dq_01"]
+    trailing_months = int(dq01_cfg["trailing_months"])
+    min_prior_months = int(dq01_cfg["min_prior_months"])
+    band_pct = float(dq01_cfg["band_pct"])
+
+    if bool(dq01_cfg.get("allow_insufficient_history", False)):
+        raise ValueError(
+            "Generic DQ-01 insufficient-history bypass is not supported. "
+            "Only the fixed bootstrap window beginning "
+            f"{PLATFORM_START_YEAR_MONTH} is allowed."
+        )
+
+    required_prior_months = previous_months(year_month, trailing_months)
+    required_prior_month_set = set(required_prior_months)
+    observed_prior_counts = {
         row["year_month"]: int(row["count"])
         for row in prior_df.groupBy("year_month").count().collect()
     }
+    prior_counts = {
+        month: count
+        for month, count in observed_prior_counts.items()
+        if month in required_prior_month_set
+    }
     prior_month_count = len(prior_counts)
+    missing_prior_months = [
+        month for month in required_prior_months if month not in prior_counts
+    ]
+    history_complete = prior_month_count >= min_prior_months and not missing_prior_months
+    bootstrap_month = is_dq01_bootstrap_month(year_month, min_prior_months)
+
     trailing_avg = (
         sum(prior_counts.values()) / prior_month_count
         if prior_month_count > 0
         else 0.0
     )
-
-    dq01_cfg = config["dq_01"]
-    min_prior_months = int(dq01_cfg["min_prior_months"])
-    band_pct = float(dq01_cfg["band_pct"])
-    allow_insufficient_history = bool(dq01_cfg["allow_insufficient_history"]) or allow_insufficient_history_override
-
     lower = trailing_avg * (1.0 - band_pct)
     upper = trailing_avg * (1.0 + band_pct)
 
-    if prior_month_count < min_prior_months:
-        dq_01_ok = int(allow_insufficient_history and current_row_count > 0)
+    if bootstrap_month:
+        dq_01_applicable = 0
+        dq_01_ok = 1
+        dq_01_evaluation_mode = "bootstrap_not_applicable"
+    elif not history_complete:
+        dq_01_applicable = 1
+        dq_01_ok = 0
+        dq_01_evaluation_mode = "missing_required_history"
     else:
+        dq_01_applicable = 1
         dq_01_ok = int(lower <= current_row_count <= upper)
+        dq_01_evaluation_mode = "evaluated"
 
     pickup_nulls = count_where(current_df, F.col("pickup_ts").isNull())
     pu_zone_nulls = count_where(current_df, F.col("pu_zone_id").isNull())
@@ -256,6 +288,13 @@ def build_dq_metrics(
         "service": service,
         "year_month": year_month,
         "current_row_count": current_row_count,
+        "dq_01_applicable": dq_01_applicable,
+        "dq_01_bootstrap_month": int(bootstrap_month),
+        "dq_01_history_complete": int(history_complete),
+        "dq_01_evaluation_mode": dq_01_evaluation_mode,
+        "dq_01_required_prior_months": ",".join(required_prior_months),
+        "dq_01_missing_prior_months": ",".join(missing_prior_months),
+        "dq_01_platform_start_year_month": PLATFORM_START_YEAR_MONTH,
         "prior_month_count": prior_month_count,
         "trailing_3_month_avg_row_count": float(trailing_avg),
         "row_count_lower_bound": float(lower),
@@ -346,7 +385,6 @@ def parse_args(argv: list[str]) -> DQRunConfig:
         "dq_config_path",
         "crz_zones_path",
         "dq_results_s3_prefix",
-        "allow_insufficient_history",
     ]
 
     try:
@@ -358,8 +396,7 @@ def parse_args(argv: list[str]) -> DQRunConfig:
         for arg in arg_names:
             if arg == "JOB_NAME":
                 continue
-            required = arg != "allow_insufficient_history"
-            parser.add_argument(f"--{arg}", required=required)
+            parser.add_argument(f"--{arg}", required=True)
         parsed = vars(parser.parse_args(argv[1:]))
 
     service = parsed["service"].lower()
@@ -375,7 +412,6 @@ def parse_args(argv: list[str]) -> DQRunConfig:
         dq_config_path=parsed["dq_config_path"],
         crz_zones_path=parsed["crz_zones_path"],
         dq_results_s3_prefix=parsed["dq_results_s3_prefix"],
-        allow_insufficient_history=parse_bool(parsed.get("allow_insufficient_history")),
     )
 
 
@@ -414,7 +450,6 @@ def main(argv: list[str]) -> None:
         year_month=run_config.year_month,
         config=dq_config,
         crz_zone_ids=crz_zone_ids,
-        allow_insufficient_history_override=run_config.allow_insufficient_history,
     )
 
     metrics_df.show(truncate=False)

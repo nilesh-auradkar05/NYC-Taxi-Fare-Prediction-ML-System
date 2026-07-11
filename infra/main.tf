@@ -93,6 +93,8 @@ module "stepfunctions_skeleton" {
   conform_job_name          = "${local.name_prefix}-conform-trips"
   dq_gate_job_name          = "${local.name_prefix}-dq-gate-silver-trips"
   alert_topic_arn           = module.sns.pipeline_alert_topic_arn
+  manifest_table_name       = module.manifest_table.table_name
+  manifest_table_arn        = module.manifest_table.table_arn
 }
 
 module "athena" {

@@ -71,13 +71,12 @@ resource "aws_glue_job" "dq_gate_silver_trips" {
       "--conf spark.sql.catalog.glue_catalog.io-impl=org.apache.iceberg.aws.s3.S3FileIO"
     ])
 
-    "--catalog"                    = "glue_catalog"
-    "--silver_db"                  = var.silver_glue_database_name
-    "--dq_rules_path"              = "s3://${var.artifacts_bucket_name}/${aws_s3_object.dq_rules_silver_trips.key}"
-    "--dq_config_path"             = "s3://${var.artifacts_bucket_name}/${aws_s3_object.dq_config_silver_trips.key}"
-    "--crz_zones_path"             = "s3://${var.artifacts_bucket_name}/${aws_s3_object.crz_zones_seed.key}"
-    "--dq_results_s3_prefix"       = "s3://${var.artifacts_bucket_name}/glue/dq-results/silver_trips/"
-    "--allow_insufficient_history" = "false"
+    "--catalog"              = "glue_catalog"
+    "--silver_db"            = var.silver_glue_database_name
+    "--dq_rules_path"        = "s3://${var.artifacts_bucket_name}/${aws_s3_object.dq_rules_silver_trips.key}"
+    "--dq_config_path"       = "s3://${var.artifacts_bucket_name}/${aws_s3_object.dq_config_silver_trips.key}"
+    "--crz_zones_path"       = "s3://${var.artifacts_bucket_name}/${aws_s3_object.crz_zones_seed.key}"
+    "--dq_results_s3_prefix" = "s3://${var.artifacts_bucket_name}/glue/dq-results/silver_trips/"
   }
 
   execution_property {

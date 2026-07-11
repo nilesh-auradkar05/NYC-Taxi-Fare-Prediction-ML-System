@@ -6,7 +6,10 @@ from pathlib import Path
 import pytest
 from pyspark.sql import SparkSession
 
-from ingestion.jobs.dq_gate import build_dq_metrics
+from ingestion.jobs.dq_gate import (
+    PLATFORM_START_YEAR_MONTH,
+    build_dq_metrics,
+)
 
 DQ_RULES_PATH = Path("ingestion/dq/rules/silver_trips_dq.dqdl")
 DQ_CONFIG_PATH = Path("ingestion/dq/rules/silver_trips_dq_config.json")
@@ -154,3 +157,153 @@ def test_dq_metrics_fail_for_poisoned_rows(spark: SparkSession, dq_config: dict)
     assert metrics["dq_03_domain_values_ok"] == 0
     assert metrics["dq_04_timestamp_sanity_ok"] == 0
     assert metrics["dq_05_duplicate_key_rate_ok"] == 0
+
+
+def build_metrics_for_month(
+    spark: SparkSession,
+    dq_config: dict,
+    *,
+    year_month: str,
+    prior_months: list[str],
+    current_rows: list[dict] | None = None,
+) -> dict:
+    current = spark.createDataFrame(
+        current_rows or [valid_trip(f"cur-{i}", year_month) for i in range(10)]
+    )
+    prior_rows = [
+        valid_trip(f"prior-{month}-{i}", month)
+        for month in prior_months
+        for i in range(10)
+    ]
+    prior = spark.createDataFrame(prior_rows) if prior_rows else current.limit(0)
+
+    return build_dq_metrics(
+        spark,
+        current_df=current,
+        prior_df=prior,
+        service="yellow",
+        year_month=year_month,
+        config=dq_config,
+        crz_zone_ids={100, 161},
+    ).collect()[0].asDict()
+
+
+@pytest.mark.parametrize(
+    (
+        "year_month",
+        "prior_months",
+        "applicable",
+        "history_complete",
+        "mode",
+        "missing",
+        "dq01_ok",
+    ),
+    [
+        ("2023-01", [], 0, 0, "bootstrap_not_applicable", None, 1),
+        ("2023-02", ["2023-01"], 0, 0, "bootstrap_not_applicable", None, 1),
+        (
+            "2023-03",
+            ["2023-01", "2023-02"],
+            0,
+            0,
+            "bootstrap_not_applicable",
+            None,
+            1,
+        ),
+        (
+            "2023-04",
+            ["2023-01", "2023-02"],
+            1,
+            0,
+            "missing_required_history",
+            "2023-03",
+            0,
+        ),
+        (
+            "2025-06",
+            [],
+            1,
+            0,
+            "missing_required_history",
+            "2025-05,2025-04,2025-03",
+            0,
+        ),
+        (
+            "2025-06",
+            ["2025-03", "2025-04", "2025-05"],
+            1,
+            1,
+            "evaluated",
+            "",
+            1,
+        ),
+    ],
+)
+def test_dq01_bootstrap_and_history_contract(
+    spark: SparkSession,
+    dq_config: dict,
+    year_month: str,
+    prior_months: list[str],
+    applicable: int,
+    history_complete: int,
+    mode: str,
+    missing: str | None,
+    dq01_ok: int,
+):
+    metrics = build_metrics_for_month(
+        spark,
+        dq_config,
+        year_month=year_month,
+        prior_months=prior_months,
+    )
+
+    assert metrics["dq_01_platform_start_year_month"] == PLATFORM_START_YEAR_MONTH
+    assert metrics["dq_01_applicable"] == applicable
+    assert metrics["dq_01_history_complete"] == history_complete
+    assert metrics["dq_01_evaluation_mode"] == mode
+    assert metrics["dq_01_row_count_within_trailing_3_band"] == dq01_ok
+    if missing is not None:
+        assert metrics["dq_01_missing_prior_months"] == missing
+
+
+def test_bootstrap_does_not_hide_other_dq_failures(
+    spark: SparkSession,
+    dq_config: dict,
+):
+    metrics = build_metrics_for_month(
+        spark,
+        dq_config,
+        year_month="2023-01",
+        prior_months=[],
+        current_rows=[
+            valid_trip("ok", "2023-01"),
+            {**valid_trip("bad-null", "2023-01"), "pickup_ts": None},
+            valid_trip("bad-domain", "2023-01", fare=2001.0),
+        ],
+    )
+
+    assert metrics["dq_01_row_count_within_trailing_3_band"] == 1
+    assert metrics["dq_02_required_null_rates_ok"] == 0
+    assert metrics["dq_03_domain_values_ok"] == 0
+
+
+def test_generic_insufficient_history_bypass_is_rejected(
+    spark: SparkSession,
+    dq_config: dict,
+):
+    unsafe_config = json.loads(json.dumps(dq_config))
+    unsafe_config["dq_01"]["allow_insufficient_history"] = True
+    current = spark.createDataFrame(
+        [valid_trip(f"cur-{i}", "2025-06") for i in range(10)]
+    )
+
+    with pytest.raises(ValueError, match="Generic DQ-01 insufficient-history bypass"):
+        build_dq_metrics(
+            spark,
+            current_df=current,
+            prior_df=current.limit(0),
+            service="yellow",
+            year_month="2025-06",
+            config=unsafe_config,
+            crz_zone_ids={100, 161},
+        )

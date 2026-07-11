@@ -13,6 +13,15 @@ SERVICE_FILE_PREFIX = {
 
 DEFAULT_TLC_SOURCE_BASE_URL = "https://d37ci6vzurychx.cloudfront.net/trip-data"
 
+MANIFEST_STATUS_FETCHED = "fetched"
+MANIFEST_STATUS_PROCESSING = "processing"
+MANIFEST_STATUS_COMPLETE = "complete"
+MANIFEST_STATUS_FAILED = "failed"
+
+PIPELINE_ACTION_FETCH = "fetch"
+PIPELINE_ACTION_RESUME = "resume"
+PIPELINE_ACTION_SKIP = "skip"
+
 
 def validate_event(event: dict[str, Any]) -> tuple[str, str, str | None, bool]:
     service = str(event.get("service", "")).lower().strip()
@@ -69,18 +78,41 @@ def get_source_metadata(source_url: str) -> dict[str, str]:
     }
 
 
+def determine_pipeline_action(
+    existing_item: dict[str, Any] | None,
+    source_etag: str,
+    force: bool = False,
+) -> str:
+    """Choose whether to fetch, resume downstream processing, or skip.
+
+    A matching ETag is skippable only after the entire state machine has marked
+    the manifest complete. Matching incomplete records reuse the existing Bronze
+    object when one is recorded, avoiding another TLC download.
+    """
+    if force or not existing_item:
+        return PIPELINE_ACTION_FETCH
+
+    if existing_item.get("etag") != source_etag:
+        return PIPELINE_ACTION_FETCH
+
+    if existing_item.get("status") == MANIFEST_STATUS_COMPLETE:
+        return PIPELINE_ACTION_SKIP
+
+    if existing_item.get("bronze_s3_uri"):
+        return PIPELINE_ACTION_RESUME
+
+    return PIPELINE_ACTION_FETCH
+
+
 def should_skip_existing(
     existing_item: dict[str, Any] | None,
     source_etag: str,
     force: bool = False,
 ) -> bool:
-    if force:
-        return False
-
-    if not existing_item:
-        return False
-
-    return existing_item.get("etag") == source_etag and existing_item.get("status") == "fetched"
+    return (
+        determine_pipeline_action(existing_item, source_etag, force=force)
+        == PIPELINE_ACTION_SKIP
+    )
 
 
 def bronze_keys(service: str, year_month: str) -> tuple[str, str]:

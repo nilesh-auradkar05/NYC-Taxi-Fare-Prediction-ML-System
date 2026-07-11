@@ -52,6 +52,13 @@ resource "aws_iam_role_policy" "sfn_glue_dq_sns" {
           "events:PutEvents"
         ]
         Resource = "arn:aws:events:us-east-1:${var.account_id}:event-bus/default"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:UpdateItem"
+        ]
+        Resource = var.manifest_table_arn
       }
     ]
   })
@@ -97,6 +104,7 @@ resource "aws_sfn_state_machine" "monthly_ingestion" {
     conform_job_name           = var.conform_job_name
     dq_gate_job_name           = var.dq_gate_job_name
     alert_topic_arn            = var.alert_topic_arn
+    manifest_table_name        = var.manifest_table_name
   })
 }
 

@@ -12,6 +12,7 @@ import boto3
 from botocore.exceptions import ClientError
 from shared.tlc_manifest import (
     DEFAULT_TLC_SOURCE_BASE_URL,
+    MANIFEST_STATUS_COMPLETE,
     bronze_keys,
     build_tlc_url,
     get_source_metadata,
@@ -71,14 +72,28 @@ def write_manifest_item(
     try:
         table.put_item(
             Item=item,
-            ConditionExpression="attribute_not_exists(#service) OR etag <> :etag",
-            ExpressionAttributeNames={"#service": "service"},
-            ExpressionAttributeValues={":etag": item["etag"]},
+            ConditionExpression=(
+                "attribute_not_exists(#service) "
+                "OR etag <> :etag "
+                "OR attribute_not_exists(#status) "
+                "OR #status <> :complete"
+            ),
+            ExpressionAttributeNames={
+                "#service": "service",
+                "#status": "status",
+            },
+            ExpressionAttributeValues={
+                ":etag": item["etag"],
+                ":complete": MANIFEST_STATUS_COMPLETE,
+            },
         )
     except ClientError as exc:
         error_code = exc.response.get("Error", {}).get("Code")
         if error_code == "ConditionalCheckFailedException":
-            LOGGER.info("Manifest already contains same etag; treating as idempotent skip.")
+            LOGGER.info(
+                "Manifest already contains the same completed etag; "
+                "treating fetch as an idempotent skip."
+            )
             return
         raise
 
@@ -109,7 +124,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     if should_skip_existing(existing, source_etag, force=force):
         return {
             "status": "skipped",
-            "reason": "unchanged_etag",
+            "reason": "unchanged_etag_complete",
             "service": service,
             "year_month": year_month,
             "etag": source_etag,

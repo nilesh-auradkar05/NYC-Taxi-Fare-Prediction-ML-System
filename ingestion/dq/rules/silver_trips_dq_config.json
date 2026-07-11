@@ -1,9 +1,9 @@
 {
   "dq_01": {
-    "description": "Monthly row count within ±40% of trailing-3-month mean",
+    "description": "Monthly row count within ±40% of trailing-3-month mean; bootstrap window covers the first trailing_months partitions from platform_start_year_month",
+    "platform_start_year_month": "2025-06",
     "trailing_months": 3,
     "band_pct": 0.40,
-    "min_prior_months": 3,
     "allow_insufficient_history": false
   },
   "dq_02": {
@@ -32,7 +32,7 @@
     "fee_zero_tolerance": 0.0001
   },
   "dq_07": {
-    "description": "Post-2025 cbd_congestion_fee values are service-specific and CRZ fee-positive rate is plausible",
+    "description": "Post-2025 CBD fee checks, split: (a) fee amounts limited to {0, expected service amount} with a small anomaly-rate allowance; (b) CRZ-pickup positive-fee rate above a floor. Upper bound removed 2026-07: measured rate 0.9937 for yellow 2025-06 (2,180,684/2,194,584) exceeded the guessed 0.99 cap; near-1.0 is reality, not implausibility. Note pu_zone_id is a proxy — the fee applies on zone entry, so ~671k charged 2025-06 trips picked up outside CRZ; the proxy undercounts, which is safe for a floor check.",
     "post_2025_start_year_month": "2025-01",
     "fee_amount_tolerance": 0.0001,
     "expected_fee_amounts": {
@@ -40,8 +40,9 @@
       "hvfhv": 1.50
     },
     "allowed_zero_fee": true,
+    "max_invalid_fee_amount_rate": 0.0001,
     "min_crz_rows_for_rate_check": 100,
     "crz_positive_fee_rate_min": 0.01,
-    "crz_positive_fee_rate_max": 0.99
+    "crz_positive_fee_rate_max": 1.0
   }
 }

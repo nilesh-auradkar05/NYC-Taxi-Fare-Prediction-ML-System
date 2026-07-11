@@ -23,6 +23,16 @@ variable "alert_topic_arn" {
   type        = string
 }
 
+variable "manifest_table_name" {
+  description = "DynamoDB manifest table name updated by the ingestion state machine."
+  type        = string
+}
+
+variable "manifest_table_arn" {
+  description = "DynamoDB manifest table ARN updated by the ingestion state machine."
+  type        = string
+}
+
 variable "conform_job_name" {
   description = "AWS Glue conform job name."
   type        = string

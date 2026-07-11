@@ -5,9 +5,11 @@ from typing import Any
 
 import boto3
 from shared.tlc_manifest import (
+    PIPELINE_ACTION_RESUME,
+    PIPELINE_ACTION_SKIP,
     build_tlc_url,
+    determine_pipeline_action,
     get_source_metadata,
-    should_skip_existing,
     validate_event,
 )
 
@@ -36,8 +38,11 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     source_metadata = get_source_metadata(source_url)
     existing = get_existing_manifest(manifest_table, service, year_month)
-
-    skip = should_skip_existing(existing, source_metadata["etag"], force=force)
+    pipeline_action = determine_pipeline_action(
+        existing,
+        source_metadata["etag"],
+        force=force,
+    )
 
     return {
         **event,
@@ -47,7 +52,19 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "etag": source_metadata["etag"],
         "source_last_modified": source_metadata.get("last_modified", ""),
         "source_content_length": source_metadata.get("content_length", ""),
-        "is_new": not skip,
-        "skip_reason": "unchanged_etag" if skip else None,
+        "pipeline_action": pipeline_action,
+        # Retained for compatibility with existing execution inspection and tests.
+        "is_new": pipeline_action != PIPELINE_ACTION_SKIP,
+        "skip_reason": (
+            "unchanged_etag_complete"
+            if pipeline_action == PIPELINE_ACTION_SKIP
+            else None
+        ),
+        "resume_reason": (
+            "unchanged_etag_incomplete"
+            if pipeline_action == PIPELINE_ACTION_RESUME
+            else None
+        ),
+        "existing_manifest_status": existing.get("status") if existing else None,
         "existing_bronze_s3_uri": existing.get("bronze_s3_uri") if existing else None,
     }

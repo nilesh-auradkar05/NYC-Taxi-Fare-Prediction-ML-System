@@ -1,5 +1,5 @@
 {
-  "Comment": "NYC Taxi Prediction monthly ingestion: manifest -> bronze -> conform -> DQ gate",
+  "Comment": "NYC Taxi Prediction monthly ingestion: manifest lifecycle -> bronze -> conform -> DQ gate -> event",
   "StartAt": "CheckManifest",
   "States": {
     "CheckManifest": {
@@ -13,15 +13,20 @@
           "BackoffRate": 2.0
         }
       ],
-      "Next": "HasNewFile"
+      "Next": "SelectPipelineAction"
     },
-    "HasNewFile": {
+    "SelectPipelineAction": {
       "Type": "Choice",
       "Choices": [
         {
-          "Variable": "$.is_new",
-          "BooleanEquals": true,
+          "Variable": "$.pipeline_action",
+          "StringEquals": "fetch",
           "Next": "FetchToBronze"
+        },
+        {
+          "Variable": "$.pipeline_action",
+          "StringEquals": "resume",
+          "Next": "MarkManifestProcessing"
         }
       ],
       "Default": "NoNewFile"
@@ -40,6 +45,52 @@
           "BackoffRate": 2.0
         }
       ],
+      "Next": "MarkManifestProcessing"
+    },
+    "MarkManifestProcessing": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${manifest_table_name}",
+        "Key": {
+          "service": {
+            "S.$": "$.service"
+          },
+          "year_month": {
+            "S.$": "$.year_month"
+          }
+        },
+        "UpdateExpression": "SET #status = :status, #updated_at = :updated_at, #execution_arn = :execution_arn REMOVE #failed_at, #last_error, #failure_stage, #completed_at",
+        "ConditionExpression": "#etag = :etag AND (attribute_not_exists(#status) OR #status <> :complete)",
+        "ExpressionAttributeNames": {
+          "#status": "status",
+          "#updated_at": "updated_at",
+          "#execution_arn": "execution_arn",
+          "#failed_at": "failed_at",
+          "#last_error": "last_error",
+          "#failure_stage": "failure_stage",
+          "#completed_at": "completed_at",
+          "#etag": "etag"
+        },
+        "ExpressionAttributeValues": {
+          ":status": {
+            "S": "processing"
+          },
+          ":complete": {
+            "S": "complete"
+          },
+          ":updated_at": {
+            "S.$": "$$.State.EnteredTime"
+          },
+          ":execution_arn": {
+            "S.$": "$$.Execution.Id"
+          },
+          ":etag": {
+            "S.$": "$.etag"
+          }
+        }
+      },
+      "ResultPath": null,
       "Next": "GlueConform"
     },
     "GlueConform": {
@@ -53,6 +104,13 @@
         }
       },
       "ResultPath": "$.glue_conform",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.pipeline_error",
+          "Next": "MarkManifestFailedAfterConform"
+        }
+      ],
       "Next": "DQGate"
     },
     "DQGate": {
@@ -69,8 +127,8 @@
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
-          "ResultPath": "$.dq_error",
-          "Next": "NotifyDQFailure"
+          "ResultPath": "$.pipeline_error",
+          "Next": "MarkManifestFailedAfterDQ"
         }
       ],
       "Next": "EmitSilverUpdatedEvent"
@@ -94,7 +152,235 @@
         ]
       },
       "ResultPath": "$.emit_event",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.pipeline_error",
+          "Next": "MarkManifestFailedAfterEvent"
+        }
+      ],
+      "Next": "MarkManifestComplete"
+    },
+    "MarkManifestComplete": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${manifest_table_name}",
+        "Key": {
+          "service": {
+            "S.$": "$.service"
+          },
+          "year_month": {
+            "S.$": "$.year_month"
+          }
+        },
+        "UpdateExpression": "SET #status = :status, #updated_at = :updated_at, #completed_at = :completed_at, #execution_arn = :execution_arn REMOVE #failed_at, #last_error, #failure_stage",
+        "ConditionExpression": "#etag = :etag",
+        "ExpressionAttributeNames": {
+          "#status": "status",
+          "#updated_at": "updated_at",
+          "#completed_at": "completed_at",
+          "#execution_arn": "execution_arn",
+          "#failed_at": "failed_at",
+          "#last_error": "last_error",
+          "#failure_stage": "failure_stage",
+          "#etag": "etag"
+        },
+        "ExpressionAttributeValues": {
+          ":status": {
+            "S": "complete"
+          },
+          ":updated_at": {
+            "S.$": "$$.State.EnteredTime"
+          },
+          ":completed_at": {
+            "S.$": "$$.State.EnteredTime"
+          },
+          ":execution_arn": {
+            "S.$": "$$.Execution.Id"
+          },
+          ":etag": {
+            "S.$": "$.etag"
+          }
+        }
+      },
+      "ResultPath": null,
       "Next": "Done"
+    },
+    "MarkManifestFailedAfterConform": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${manifest_table_name}",
+        "Key": {
+          "service": {
+            "S.$": "$.service"
+          },
+          "year_month": {
+            "S.$": "$.year_month"
+          }
+        },
+        "UpdateExpression": "SET #status = :status, #updated_at = :updated_at, #failed_at = :failed_at, #execution_arn = :execution_arn, #failure_stage = :failure_stage, #last_error = :last_error REMOVE #completed_at",
+        "ConditionExpression": "#etag = :etag AND (attribute_not_exists(#status) OR #status <> :complete)",
+        "ExpressionAttributeNames": {
+          "#status": "status",
+          "#updated_at": "updated_at",
+          "#failed_at": "failed_at",
+          "#execution_arn": "execution_arn",
+          "#failure_stage": "failure_stage",
+          "#last_error": "last_error",
+          "#completed_at": "completed_at",
+          "#etag": "etag"
+        },
+        "ExpressionAttributeValues": {
+          ":status": {
+            "S": "failed"
+          },
+          ":complete": {
+            "S": "complete"
+          },
+          ":updated_at": {
+            "S.$": "$$.State.EnteredTime"
+          },
+          ":failed_at": {
+            "S.$": "$$.State.EnteredTime"
+          },
+          ":execution_arn": {
+            "S.$": "$$.Execution.Id"
+          },
+          ":failure_stage": {
+            "S": "GlueConform"
+          },
+          ":last_error": {
+            "S.$": "States.JsonToString($.pipeline_error)"
+          },
+          ":etag": {
+            "S.$": "$.etag"
+          }
+        }
+      },
+      "ResultPath": null,
+      "Next": "NotifyPipelineFailure"
+    },
+    "MarkManifestFailedAfterDQ": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${manifest_table_name}",
+        "Key": {
+          "service": {
+            "S.$": "$.service"
+          },
+          "year_month": {
+            "S.$": "$.year_month"
+          }
+        },
+        "UpdateExpression": "SET #status = :status, #updated_at = :updated_at, #failed_at = :failed_at, #execution_arn = :execution_arn, #failure_stage = :failure_stage, #last_error = :last_error REMOVE #completed_at",
+        "ConditionExpression": "#etag = :etag AND (attribute_not_exists(#status) OR #status <> :complete)",
+        "ExpressionAttributeNames": {
+          "#status": "status",
+          "#updated_at": "updated_at",
+          "#failed_at": "failed_at",
+          "#execution_arn": "execution_arn",
+          "#failure_stage": "failure_stage",
+          "#last_error": "last_error",
+          "#completed_at": "completed_at",
+          "#etag": "etag"
+        },
+        "ExpressionAttributeValues": {
+          ":status": {
+            "S": "failed"
+          },
+          ":complete": {
+            "S": "complete"
+          },
+          ":updated_at": {
+            "S.$": "$$.State.EnteredTime"
+          },
+          ":failed_at": {
+            "S.$": "$$.State.EnteredTime"
+          },
+          ":execution_arn": {
+            "S.$": "$$.Execution.Id"
+          },
+          ":failure_stage": {
+            "S": "DQGate"
+          },
+          ":last_error": {
+            "S.$": "States.JsonToString($.pipeline_error)"
+          },
+          ":etag": {
+            "S.$": "$.etag"
+          }
+        }
+      },
+      "ResultPath": null,
+      "Next": "NotifyDQFailure"
+    },
+    "MarkManifestFailedAfterEvent": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${manifest_table_name}",
+        "Key": {
+          "service": {
+            "S.$": "$.service"
+          },
+          "year_month": {
+            "S.$": "$.year_month"
+          }
+        },
+        "UpdateExpression": "SET #status = :status, #updated_at = :updated_at, #failed_at = :failed_at, #execution_arn = :execution_arn, #failure_stage = :failure_stage, #last_error = :last_error REMOVE #completed_at",
+        "ConditionExpression": "#etag = :etag AND (attribute_not_exists(#status) OR #status <> :complete)",
+        "ExpressionAttributeNames": {
+          "#status": "status",
+          "#updated_at": "updated_at",
+          "#failed_at": "failed_at",
+          "#execution_arn": "execution_arn",
+          "#failure_stage": "failure_stage",
+          "#last_error": "last_error",
+          "#completed_at": "completed_at",
+          "#etag": "etag"
+        },
+        "ExpressionAttributeValues": {
+          ":status": {
+            "S": "failed"
+          },
+          ":complete": {
+            "S": "complete"
+          },
+          ":updated_at": {
+            "S.$": "$$.State.EnteredTime"
+          },
+          ":failed_at": {
+            "S.$": "$$.State.EnteredTime"
+          },
+          ":execution_arn": {
+            "S.$": "$$.Execution.Id"
+          },
+          ":failure_stage": {
+            "S": "EmitSilverUpdatedEvent"
+          },
+          ":last_error": {
+            "S.$": "States.JsonToString($.pipeline_error)"
+          },
+          ":etag": {
+            "S.$": "$.etag"
+          }
+        }
+      },
+      "ResultPath": null,
+      "Next": "NotifyPipelineFailure"
+    },
+    "NotifyPipelineFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${alert_topic_arn}",
+        "Subject": "NYC Mobility ingestion pipeline failed",
+        "Message.$": "States.JsonToString($)"
+      },
+      "Next": "PipelineFailed"
     },
     "NotifyDQFailure": {
       "Type": "Task",
@@ -106,10 +392,15 @@
       },
       "Next": "DQFailed"
     },
+    "PipelineFailed": {
+      "Type": "Fail",
+      "Error": "IngestionPipelineFailed",
+      "Cause": "Monthly ingestion failed; manifest marked failed and SNS alert published."
+    },
     "DQFailed": {
       "Type": "Fail",
       "Error": "DataQualityGateFailed",
-      "Cause": "Glue Data Quality gate failed; SNS alert published."
+      "Cause": "Glue Data Quality gate failed; manifest marked failed and SNS alert published."
     },
     "Done": {
       "Type": "Succeed"

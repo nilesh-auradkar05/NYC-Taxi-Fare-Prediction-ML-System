@@ -322,7 +322,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="all",
         help="service to backfill: yellow, hvfhv, or all (default: all)",
     )
-    parser.add_argument("--start-month", default="2023-01", metavar="YYYY-MM")
+    parser.add_argument(
+        "--start-month",
+        required=True,
+        metavar="YYYY-MM",
+        help="first month to backfill; must not precede dq_01.platform_start_year_month",
+    )
     parser.add_argument("--end-month", default=datetime.now(UTC).strftime("%Y-%m"), metavar="YYYY-MM")
     parser.add_argument("--state-machine-arn")
     parser.add_argument("--poll-seconds", type=float, default=15.0)

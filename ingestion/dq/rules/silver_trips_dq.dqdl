@@ -19,8 +19,11 @@ Rules = [
     # DQ-06 cbd_congestion_fee = 0 for all pre-2025 partitions
     ColumnValues "dq_06_pre_2025_cbd_fee_zero_ok" = 1 labels=["dq_id"="DQ-06", "severity"="critical"],
 
-    # DQ-07 post-2025 fee in {0, expected service amount}; CRZ positive-fee rate plausible
-    ColumnValues "dq_07_post_2025_cbd_fee_plausibility_ok" = 1 labels=["dq_id"="DQ-07", "severity"="critical"]
+    # DQ-07A post-2025 fee amounts in {0, expected service amount}; anomaly rate < 0.01%
+    ColumnValues "dq_07a_post_2025_fee_amounts_ok" = 1 labels=["dq_id"="DQ-07A", "severity"="critical"],
+
+    # DQ-07B post-2025 CRZ-pickup positive-fee rate within configured band (floor check)
+    ColumnValues "dq_07b_crz_positive_fee_rate_ok" = 1 labels=["dq_id"="DQ-07B", "severity"="critical"]
 ]
 
 Analyzers = [
@@ -30,5 +33,8 @@ Analyzers = [
     ColumnValues "pickup_ts_null_rate",
     ColumnValues "pu_zone_id_null_rate",
     ColumnValues "fare_amount_null_rate",
+    ColumnValues "invalid_post_fee_amount_count",
+    ColumnValues "invalid_post_fee_amount_rate",
+    ColumnValues "crz_trip_count",
     ColumnValues "crz_positive_fee_rate"
 ]

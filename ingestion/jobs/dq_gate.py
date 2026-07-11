@@ -15,7 +15,6 @@ from pyspark.sql import functions as F
 YEAR_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SUPPORTED_SERVICES = {"yellow", "hvfhv"}
-PLATFORM_START_YEAR_MONTH = "2023-01"
 
 
 @dataclass(frozen=True)
@@ -67,10 +66,20 @@ def month_ordinal(year_month: str) -> int:
     return year * 12 + month - 1
 
 
-def is_dq01_bootstrap_month(year_month: str, bootstrap_months: int) -> bool:
+def is_dq01_bootstrap_month(
+    year_month: str,
+    bootstrap_months: int,
+    platform_start_year_month: str,
+) -> bool:
+    """True if year_month falls in the fixed bootstrap window.
+
+    The window is the first `bootstrap_months` partitions starting at
+    `platform_start_year_month` — the months that structurally cannot have
+    full trailing history. It is the only sanctioned relaxation of DQ-01.
+    """
     if bootstrap_months < 0:
         raise ValueError("bootstrap_months must be non-negative")
-    offset = month_ordinal(year_month) - month_ordinal(PLATFORM_START_YEAR_MONTH)
+    offset = month_ordinal(year_month) - month_ordinal(platform_start_year_month)
     return 0 <= offset < bootstrap_months
 
 
@@ -148,22 +157,33 @@ def build_dq_metrics(
     crz_zone_ids: set[int],
 ) -> DataFrame:
     validate_year_month(year_month)
-    current_df = current_df.cache()
-    prior_df = prior_df.cache()
-
-    current_row_count = int(current_df.count())
 
     dq01_cfg = config["dq_01"]
-    trailing_months = int(dq01_cfg["trailing_months"])
-    min_prior_months = int(dq01_cfg["min_prior_months"])
-    band_pct = float(dq01_cfg["band_pct"])
 
     if bool(dq01_cfg.get("allow_insufficient_history", False)):
         raise ValueError(
             "Generic DQ-01 insufficient-history bypass is not supported. "
-            "Only the fixed bootstrap window beginning "
-            f"{PLATFORM_START_YEAR_MONTH} is allowed."
+            "Only the fixed bootstrap window beginning at "
+            "dq_01.platform_start_year_month is allowed."
         )
+
+    platform_start_year_month = validate_year_month(
+        str(dq01_cfg["platform_start_year_month"])
+    )
+    trailing_months = int(dq01_cfg["trailing_months"])
+    band_pct = float(dq01_cfg["band_pct"])
+
+    if month_ordinal(year_month) < month_ordinal(platform_start_year_month):
+        raise ValueError(
+            f"year_month={year_month!r} precedes platform_start_year_month="
+            f"{platform_start_year_month!r}; refusing to evaluate "
+            "pre-platform partitions"
+        )
+
+    current_df = current_df.cache()
+    prior_df = prior_df.cache()
+
+    current_row_count = int(current_df.count())
 
     required_prior_months = previous_months(year_month, trailing_months)
     required_prior_month_set = set(required_prior_months)
@@ -180,8 +200,10 @@ def build_dq_metrics(
     missing_prior_months = [
         month for month in required_prior_months if month not in prior_counts
     ]
-    history_complete = prior_month_count >= min_prior_months and not missing_prior_months
-    bootstrap_month = is_dq01_bootstrap_month(year_month, min_prior_months)
+    history_complete = not missing_prior_months
+    bootstrap_month = is_dq01_bootstrap_month(
+        year_month, trailing_months, platform_start_year_month
+    )
 
     trailing_avg = (
         sum(prior_counts.values()) / prior_month_count
@@ -274,15 +296,20 @@ def build_dq_metrics(
     min_crz_rows = int(dq07_cfg["min_crz_rows_for_rate_check"])
     rate_min = float(dq07_cfg["crz_positive_fee_rate_min"])
     rate_max = float(dq07_cfg["crz_positive_fee_rate_max"])
+    max_invalid_fee_amount_rate = float(dq07_cfg["max_invalid_fee_amount_rate"])
+    invalid_post_fee_amount_rate = rate(
+        invalid_post_fee_amount_count, current_row_count
+    )
 
     if not post_2025:
-        dq_07_ok = 1
-    elif invalid_post_fee_amount_count > 0:
-        dq_07_ok = 0
-    elif crz_trip_count < min_crz_rows:
-        dq_07_ok = 1
+        dq_07a_ok = 1
+        dq_07b_ok = 1
     else:
-        dq_07_ok = int(rate_min <= crz_positive_fee_rate <= rate_max)
+        dq_07a_ok = int(invalid_post_fee_amount_rate < max_invalid_fee_amount_rate)
+        if crz_trip_count < min_crz_rows:
+            dq_07b_ok = 1
+        else:
+            dq_07b_ok = int(rate_min <= crz_positive_fee_rate <= rate_max)
 
     payload = {
         "service": service,
@@ -294,7 +321,7 @@ def build_dq_metrics(
         "dq_01_evaluation_mode": dq_01_evaluation_mode,
         "dq_01_required_prior_months": ",".join(required_prior_months),
         "dq_01_missing_prior_months": ",".join(missing_prior_months),
-        "dq_01_platform_start_year_month": PLATFORM_START_YEAR_MONTH,
+        "dq_01_platform_start_year_month": platform_start_year_month,
         "prior_month_count": prior_month_count,
         "trailing_3_month_avg_row_count": float(trailing_avg),
         "row_count_lower_bound": float(lower),
@@ -307,6 +334,7 @@ def build_dq_metrics(
         "duplicate_key_rate": float(duplicate_key_rate),
         "pre_2025_nonzero_fee_count": int(pre_2025_nonzero_fee_count),
         "invalid_post_fee_amount_count": int(invalid_post_fee_amount_count),
+        "invalid_post_fee_amount_rate": float(invalid_post_fee_amount_rate),
         "crz_trip_count": int(crz_trip_count),
         "crz_positive_fee_count": int(crz_positive_fee_count),
         "crz_positive_fee_rate": float(crz_positive_fee_rate),
@@ -316,7 +344,8 @@ def build_dq_metrics(
         "dq_04_timestamp_sanity_ok": dq_04_ok,
         "dq_05_duplicate_key_rate_ok": dq_05_ok,
         "dq_06_pre_2025_cbd_fee_zero_ok": dq_06_ok,
-        "dq_07_post_2025_cbd_fee_plausibility_ok": dq_07_ok,
+        "dq_07a_post_2025_fee_amounts_ok": dq_07a_ok,
+        "dq_07b_crz_positive_fee_rate_ok": dq_07b_ok,
     }
 
     return spark.createDataFrame([payload])

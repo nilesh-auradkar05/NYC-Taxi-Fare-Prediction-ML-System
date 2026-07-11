@@ -1,10 +1,10 @@
-.PHONY: setup lint test test-integration dbt-compile evals backfill
+.PHONY: setup lint test test-integration poisoned dbt-compile evals backfill
 
 UV_CACHE_DIR ?= /tmp/uv-cache
 UV ?= uv --cache-dir $(UV_CACHE_DIR)
 
-test test-integration: SHELL := env
-test test-integration: .SHELLFLAGS := -u MAKEFLAGS -u MFLAGS -u MAKELEVEL uv --cache-dir $(UV_CACHE_DIR) run python -X faulthandler -c
+test: SHELL := env
+test: .SHELLFLAGS := -u MAKEFLAGS -u MFLAGS -u MAKELEVEL uv --cache-dir $(UV_CACHE_DIR) run python -X faulthandler -c
 
 setup:
 	$(UV) sync
@@ -15,8 +15,23 @@ lint:
 test:
 	@import pytest, sys; sys.exit(pytest.main(["tests/unit", "-q", "-s"]))
 
+INTEGRATION_PYTEST_ARGS ?=
+
+ifneq ($(filter poisoned,$(MAKECMDGOALS)),)
+INTEGRATION_PYTEST_ARGS += -k poisoned
+endif
+
 test-integration:
-	@import pytest, sys; sys.exit(pytest.main(["tests/integration", "-q", "-s", "-m", "integration"]))
+	$(UV) run pytest tests/integration -q -s -m integration $(INTEGRATION_PYTEST_ARGS)
+
+poisoned:
+	@:
+
+dbt-compile:
+	@echo "dbt project not scaffolded yet. This is a T-201 target stub."
+
+evals:
+	@echo "agent eval harness not scaffolded yet. This is a T-506 target stub."
 
 # backfill controls. Leave optional values empty so backfill.py remains
 # the source of truth for defaults such as the start/end month and poll interval.

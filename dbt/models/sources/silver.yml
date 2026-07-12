@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: silver
+    description: Conformed NYC trip records produced by the ingestion pipeline.
+    database: "{{ target.database }}"
+    schema: "{{ env_var('DBT_SILVER_SCHEMA', 'nyc_taxi_silver') }}"
+    loader: aws_glue
+    tables:
+      - name: trips
+        description: One conformed row per accepted trip in the Silver Iceberg table.
+      - name: trips_quarantine
+        description: Rejected trip rows with source metadata and one or more reason codes.

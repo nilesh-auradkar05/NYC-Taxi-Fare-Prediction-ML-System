@@ -27,8 +27,16 @@ test-integration:
 poisoned:
 	@:
 
+DBT_PROJECT_DIR ?= dbt
+DBT_PROFILES_DIR ?= dbt
+DBT_TARGET ?= ci
+DBT_DUCKDB_PATH ?= fixtures/nyc_taxi_ci.duckdb
+DBT_FIXTURE_PATH = $(DBT_PROJECT_DIR)/$(DBT_DUCKDB_PATH)
+DBT_UV = $(UV) run --project $(DBT_PROJECT_DIR) --frozen
+
 dbt-compile:
-	@echo "dbt project not scaffolded yet. This is a T-201 target stub."
+	DBT_DUCKDB_PATH=$(DBT_DUCKDB_PATH) $(DBT_UV) python3 $(DBT_PROJECT_DIR)/scripts/create_ci_fixture.py --path $(DBT_FIXTURE_PATH)
+	DBT_DUCKDB_PATH=$(DBT_DUCKDB_PATH) $(DBT_UV) dbt compile --project-dir $(DBT_PROJECT_DIR) --profiles-dir $(DBT_PROFILES_DIR) --target $(DBT_TARGET)
 
 evals:
 	@echo "agent eval harness not scaffolded yet. This is a T-506 target stub."

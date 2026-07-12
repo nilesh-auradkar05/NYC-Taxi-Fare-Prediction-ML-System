@@ -30,7 +30,7 @@ poisoned:
 DBT_PROJECT_DIR ?= dbt
 DBT_PROFILES_DIR ?= dbt
 DBT_TARGET ?= ci
-DBT_DUCKDB_PATH ?= fixtures/nyc_taxi_ci.duckdb
+DBT_DUCKDB_PATH ?= dbt/fixtures/nyc_taxi_ci.duckdb
 DBT_FIXTURE_PATH = $(DBT_PROJECT_DIR)/$(DBT_DUCKDB_PATH)
 DBT_UV = $(UV) run --project $(DBT_PROJECT_DIR) --frozen
 

@@ -36,6 +36,14 @@ create or replace table nyc_taxi_silver.trips (
 
 insert into nyc_taxi_silver.trips values
     (
+        'fixture-yellow-pre', 'yellow', '2024-12', 'yellow-pre.parquet', '1', 1,
+        timestamp '2024-12-30 08:00:00', timestamp '2024-12-30 08:18:00',
+        161, 162, 'Manhattan', 'Midtown Center', 'Yellow Zone',
+        'Manhattan', 'Midtown East', 'Yellow Zone',
+        3.0000, 1080, 10.0, 19.0000, 1.0000, 0.5000, 3.9000, 0.0000,
+        1.0000, 2.5000, 0.0000, 0.0000, 26.0000, 19.0000, 0.200000
+    ),
+    (
         'fixture-yellow-1', 'yellow', '2025-01', 'yellow-1.parquet', '1', 1,
         timestamp '2025-01-06 08:00:00', timestamp '2025-01-06 08:15:00',
         161, 162, 'Manhattan', 'Midtown Center', 'Yellow Zone',
@@ -52,12 +60,28 @@ insert into nyc_taxi_silver.trips values
         1.0000, 2.5000, 0.0000, 0.7500, 35.0000, 25.5000, 0.100000
     ),
     (
+        'fixture-hvfhv-crz', 'hvfhv', '2025-01', 'hvfhv-crz.parquet', 'HV0003', null,
+        timestamp '2025-01-07 10:00:00', timestamp '2025-01-07 10:20:00',
+        161, 170, 'Manhattan', 'Midtown Center', 'Yellow Zone',
+        'Manhattan', 'Murray Hill', 'Yellow Zone',
+        6.0000, 1200, 18.0, 36.0000, 0.0000, 0.0000, 2.8800, 3.0000,
+        0.0000, 2.7500, 0.0000, 1.5000, 45.0000, 36.0000, 0.080000
+    ),
+    (
         'fixture-hvfhv-1', 'hvfhv', '2025-01', 'hvfhv-1.parquet', 'HV0003', null,
         timestamp '2025-01-06 10:00:00', timestamp '2025-01-06 10:30:00',
         138, 161, 'Queens', 'LaGuardia Airport', 'Airports',
         'Manhattan', 'Midtown Center', 'Yellow Zone',
         10.0000, 1800, 20.0, 40.0000, 0.0000, 0.0000, 2.0000, 5.0000,
         0.0000, 2.7500, 0.0000, 1.5000, 50.0000, 40.0000, 0.050000
+    ),
+    (
+        'fixture-yellow-buffer', 'yellow', '2025-01', 'yellow-buffer.parquet', '2', 1,
+        timestamp '2025-01-13 07:00:00', timestamp '2025-01-13 07:12:00',
+        43, 142, 'Manhattan', 'Central Park', 'Yellow Zone',
+        'Manhattan', 'Lincoln Square East', 'Yellow Zone',
+        2.0000, 720, 10.0, 15.0000, 0.0000, 0.5000, 2.4000, 0.0000,
+        1.0000, 2.5000, 0.0000, 0.0000, 21.0000, 15.0000, 0.160000
     );
 
 create or replace table nyc_taxi_silver.trips_quarantine (

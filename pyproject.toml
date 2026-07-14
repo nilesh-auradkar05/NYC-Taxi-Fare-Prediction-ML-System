@@ -8,37 +8,52 @@ authors = [
 
 readme = "README.md"
 requires-python = ">=3.12"
+
+# 1. CORE DEPENDENCIES
 dependencies = [
     "boto3>=1.43.40",
     "botocore>=1.43.40",
-    "evidently>=0.7.21",
-    "glue-utils>=0.12.0",
-    "httpx>=0.28.1",
-    "joblib>=1.5.3",
-    "kfp>=2.16.0",
+    "clear>=2.0.0",
     "loguru>=0.7.3",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.2.2",
+]
+
+# 2. SEGREGATED DEPENDENCY GROUPS
+[dependency-groups]
+data-engineer = [
+    "dbt-athena-community==1.10.2", # Maintained Athena adapter
+    "dbt-core==1.11.12",
+    "dbt-duckdb==1.10.1",
+    "glue-utils>=0.12.0",
+    "pandas<3.0.0",
+    "pyspark>=4.1.2",
+]
+ml = [
+    "evidently>=0.7.21",
+    "joblib>=1.5.3",
+    "kfp>=2.17.0",
     "mlflow>=3.10.1",
-    "mypy>=1.20.0",
     "numpy>=2.4.4",
     "onnxmltools>=1.16.0",
     "onnxruntime>=1.24.4",
-    "pandas-stubs>=3.0.0.260204",
-    "pandas<3.0.0",
-    "prometheus-client>=0.24.1",
-    "pydantic>=2.12.5",
-    "pyspark>=4.1.2",
-    "pytest>=9.0.2",
-    "python-dotenv>=1.2.2",
-    "pyyaml>=6.0.3",
-    "ruff>=0.15.9",
     "scikit-learn>=1.8.0",
+    "xgboost>=3.2.0",
+]
+dev = [
+    "httpx>=0.28.1",
+    "pandas-stubs>=3.0.0.260204",
+    "prometheus-client>=0.24.1",
+    "pyyaml>=6.0.3",
     "streamlit>=1.56.0",
     "types-pyyaml>=6.0.12.20250915",
     "types-requests>=2.33.0.20260402",
-    "xgboost>=3.2.0",
 ]
-
-
+test = [
+    "mypy<1.20.0",
+    "pytest>=9.0.2",
+    "ruff>=0.15.9",
+]
 
 [tool.uv]
 package = false
@@ -60,8 +75,6 @@ markers = [
   "spark: tests requiring local Spark",
 ]
 filterwarnings = [
-  # Third-party libs not yet updated for NumPy 2.5 / litestar 3.0.
-  # Remove each line once the upstream package ships a fix.
   "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning:joblib",
   "ignore:numpy.core is deprecated:DeprecationWarning",
   "ignore:Call to deprecated function 'Dependency':DeprecationWarning",

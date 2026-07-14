@@ -1,0 +1,61 @@
+version: 2
+
+models:
+  - name: fct_trips_zone_day
+    description: >-
+      Daily pickup-zone and service aggregates derived from accepted Silver trips.
+      Grain: one row per pickup_date, pu_zone_id, and service.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - unique:
+          arguments:
+            column_name: >-
+              cast(pickup_date as varchar) || '|' ||
+              cast(pu_zone_id as varchar) || '|' || service
+    columns:
+      - name: pickup_date
+        data_type: date
+        description: Calendar date of trip pickup.
+        data_tests:
+          - not_null
+
+      - name: pu_zone_id
+        data_type: integer
+        description: TLC pickup-zone identifier.
+        data_tests:
+          - not_null
+
+      - name: service
+        data_type: varchar
+        description: TLC trip service represented by the aggregate.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [yellow, hvfhv]
+
+      - name: trips
+        data_type: bigint
+        description: Number of accepted Silver trips in the grain.
+
+      - name: total_fare
+        data_type: decimal(18, 4)
+        description: Sum of total_amount across trips in the grain.
+
+      - name: avg_fare_ex_surcharge
+        data_type: double
+        description: Mean trip-level fare_ex_surcharge in the grain.
+
+      - name: tip_rate
+        data_type: double
+        description: Mean of the Silver trip-level tip_rate values in the grain.
+
+      - name: avg_mph
+        data_type: double
+        description: Mean of valid trip-level average speeds in miles per hour.
+
+      - name: cbd_fee_revenue
+        data_type: decimal(18, 4)
+        description: Sum of cbd_congestion_fee across trips in the grain.

@@ -1,0 +1,73 @@
+version: 2
+
+models:
+  - name: mart_crz_panel
+    description: >-
+      Balanced weekly pickup-zone panel for the congestion-pricing causal study.
+      Grain: one row per pu_zone_id and Monday-aligned week_start. Additive
+      outcomes are zero-filled for zone-weeks with no trips; undefined average
+      outcomes remain null.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - unique:
+          arguments:
+            column_name: >-
+              cast(pu_zone_id as varchar) || '|' || cast(week_start as varchar)
+    columns:
+      - name: pu_zone_id
+        data_type: integer
+        description: TLC pickup-zone identifier.
+        data_tests:
+          - not_null
+      - name: week_start
+        data_type: date
+        description: Monday beginning the deterministic seven-day panel week.
+        data_tests:
+          - not_null
+      - name: trips
+        data_type: bigint
+        description: Weekly accepted trip count, zero-filled when no trips exist.
+        data_tests:
+          - not_null
+      - name: total_fare
+        data_type: decimal(18, 4)
+        description: Weekly sum of total fare, zero-filled when no trips exist.
+        data_tests:
+          - not_null
+      - name: avg_fare_ex_surcharge
+        data_type: double
+        description: >-
+          Trip-count-weighted weekly mean of the daily-service fare-excluding-surcharge
+          aggregates; null for zero-trip zone-weeks.
+      - name: tip_rate
+        data_type: double
+        description: >-
+          Trip-count-weighted weekly mean of the daily-service tip-rate aggregates;
+          null for zero-trip zone-weeks.
+      - name: avg_mph
+        data_type: double
+        description: >-
+          Trip-count-weighted weekly mean of the daily-service speed aggregates;
+          null for zero-trip zone-weeks.
+      - name: cbd_fee_revenue
+        data_type: decimal(18, 4)
+        description: Weekly sum of cbd_congestion_fee, zero-filled when no trips exist.
+        data_tests:
+          - not_null
+      - name: is_crz
+        data_type: boolean
+        description: True when the pickup zone belongs to the verified CRZ seed.
+        data_tests:
+          - not_null
+      - name: is_buffer_ring
+        data_type: boolean
+        description: True when the pickup zone belongs to the verified buffer-ring seed.
+        data_tests:
+          - not_null
+      - name: post
+        data_type: boolean
+        description: True beginning with the panel week starting 2025-01-06.
+        data_tests:
+          - not_null

@@ -310,3 +310,15 @@ infra/lessons.md
 
 # Terraform build artifacts
 infra/build/*.zip
+
+# dbt generated artifacts
+/dbt/build/*.zip
+/dbt/target/
+/dbt/logs/
+/dbt/dbt_packages/
+/dbt/fixtures/*.duckdb
+/dbt/fixtures/*.duckdb.wal
+
+# ignore dbt models
+!/dbt/models/
+!/dbt/models/**

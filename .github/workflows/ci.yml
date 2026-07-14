@@ -55,3 +55,9 @@ jobs:
 
       - name: Run tests
         run: python -m pytest tests/ -v --tb=short
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: dbt compile (DuckDB fixture)
+        run: make dbt-compile
